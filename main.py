@@ -47,9 +47,10 @@ class App(ctk.CTk):
             ("IMEI / ICCID Gen", self.show_generator),
             ("Ascii2Hex Converter", self.show_ascii_converter),
             ("Log Filter IMEI", self.show_imei_finder),
+            ("Merger Excel", self.show_merger),
             ("Speeds Comparator", self.show_speeds_comparator),
-            ("24V Devices", self.show_24v_devices),
-            ("Merger Excel", self.show_merger)
+            ("24V Devices", self.show_24v_tool),
+            ("0 Satellites Detector", self.show_zero_sat_tool)
         ]
 
         for i, (name, cmd) in enumerate(buttons, start=1):
@@ -85,7 +86,7 @@ class App(ctk.CTk):
             if v: res.delete(0, "end"); res.insert(0, " -e " + " -e ".join(v))
 
         ctk.CTkButton(t1, text="Execute", command=run).pack(pady=5)
-        ctk.CTkButton(t1, text="Copiar", fg_color="transparent", border_width=1,
+        ctk.CTkButton(t1, text="Copiar", border_width=1,
                       command=lambda: pyperclip.copy(res.get())).pack(pady=5)
 
         # ICCID Logic
@@ -104,7 +105,7 @@ class App(ctk.CTk):
                 res2.insert(0, url)
 
         ctk.CTkButton(t2, text="Execute", command=run2).pack(pady=5)
-        ctk.CTkButton(t2, text="Copiar", fg_color="transparent", border_width=1,
+        ctk.CTkButton(t2, text="Copiar", border_width=1,
                       command=lambda: pyperclip.copy(res2.get())).pack(pady=5)
 
     # --- HERRAMIENTA: ASCII2HEX ---
@@ -162,127 +163,134 @@ class App(ctk.CTk):
 
         ctk.CTkButton(self.current_frame, text="Seleccionar Log", command=proc).pack(pady=30)
 
-    # --- HERRAMIENTA: SPEEDS COMPARATOR (CON TOOLTIPS) ---
+    # --- HERRAMIENTA: SPEEDS COMPARATOR (TOOLTIP DUAL) ---
     def show_speeds_comparator(self):
         self.clear_frame()
         self.current_frame = ctk.CTkFrame(self.main_container)
         self.current_frame.pack(fill="both", expand=True)
         ctk.CTkLabel(self.current_frame, text="Speeds Comparator (OBD vs GPS)", font=("Arial", 18, "bold")).pack(
             pady=10)
-
         container = ctk.CTkFrame(self.current_frame, fg_color="white")
         container.pack(fill="both", expand=True, padx=20, pady=10)
 
         def analyze():
             p = filedialog.askopenfilename(filetypes=[("Log", "*.txt")])
             if not p: return
-            data = []
+            rows = []
             with open(p, "r", encoding="utf-8") as f:
                 for line in f:
-                    s, e = line.find("{"), line.rfind("}")
+                    s = line.find("{")
                     if s != -1:
                         try:
-                            d = ast.literal_eval(line[s:e + 1])
+                            d = ast.literal_eval(line[s:line.rfind("}") + 1])
                             avl = d.get("avl", {})
                             v37 = int(str(avl.get("37", 0)), 16) if avl.get("37") else 0
                             v24 = int(str(avl.get("24", 0)), 16) if avl.get("24") else 0
-                            data.append(
-                                {"t": datetime.fromtimestamp(d["msg_timestamp"] / 1000.0), "obd": v37, "gps": v24})
+                            rows.append({"t": d["msg_timestamp"], "obd": v37, "gps": v24})
                         except:
                             continue
-            if data:
-                df = pd.DataFrame(data).sort_values("t")
+            if rows:
+                df = pd.DataFrame(rows).sort_values("t")
+                df["datetime"] = pd.to_datetime(df["t"], unit='ms')
                 fig, ax = plt.subplots(figsize=(8, 4))
-                line_obd, = ax.plot(df["t"], df["obd"], label="OBD (37)", marker='o', color='#1f77b4', markersize=4)
-                line_gps, = ax.plot(df["t"], df["gps"], label="GPS (24)", marker='o', color='#ff7f0e', markersize=4)
-                ax.grid(True, linestyle='--', alpha=0.7)
-                ax.legend();
-                ax.set_ylabel("Km/h")
-                plt.xticks(rotation=30)
-                fig.tight_layout()
+                l1, = ax.plot(df["datetime"], df["obd"], label="OBD (37)", marker='o', markersize=5)
+                l2, = ax.plot(df["datetime"], df["gps"], label="GPS (24)", marker='o', markersize=5)
+                ax.grid(True, linestyle='--', alpha=0.6);
+                ax.legend()
 
-                # Tooltip dinámico
-                annot = ax.annotate("", xy=(0, 0), xytext=(10, 10), textcoords="offset points",
+                annot = ax.annotate("", xy=(0, 0), xytext=(20, 20), textcoords="offset points",
                                     bbox=dict(boxstyle="round", fc="w", ec="0.5", alpha=0.9),
                                     arrowprops=dict(arrowstyle="->"))
                 annot.set_visible(False)
 
                 def hover(event):
                     if event.inaxes == ax:
-                        vis = annot.get_visible()
-                        # Buscar en ambas líneas
-                        for line in [line_obd, line_gps]:
-                            cont, ind = line.contains(event)
-                            if cont:
-                                pos = line.get_offsets()[ind["ind"][0]]
-                                annot.xy = pos
-                                label = "OBD" if line == line_obd else "GPS"
-                                annot.set_text(f"{label}: {pos[1]} Km/h")
-                                annot.set_visible(True)
-                                fig.canvas.draw_idle()
-                                return
-                        if vis:
-                            annot.set_visible(False)
+                        cont1, ind1 = l1.contains(event)
+                        cont2, ind2 = l2.contains(event)
+                        if cont1 or cont2:
+                            idx = ind1["ind"][0] if cont1 else ind2["ind"][0]
+                            x = df["datetime"].iloc[idx]
+                            y_obd = df["obd"].iloc[idx]
+                            y_gps = df["gps"].iloc[idx]
+                            annot.xy = (x, y_obd if cont1 else y_gps)
+                            annot.set_text(f"Hora: {x.strftime('%H:%M:%S')}\nOBD: {y_obd} km/h\nGPS: {y_gps} km/h")
+                            annot.set_visible(True)
                             fig.canvas.draw_idle()
+                            return
+                    if annot.get_visible():
+                        annot.set_visible(False);
+                        fig.canvas.draw_idle()
 
                 canvas = FigureCanvasTkAgg(fig, master=container)
                 canvas.draw();
                 canvas.get_tk_widget().pack(fill="both", expand=True)
                 fig.canvas.mpl_connect("motion_notify_event", hover)
 
-        ctk.CTkButton(self.current_frame, text="Cargar Log y Ver Gráfica", command=analyze).pack(pady=10)
+        ctk.CTkButton(self.current_frame, text="Cargar Log y Graficar", command=analyze).pack(pady=10)
 
-    # --- HERRAMIENTA: 24V DEVICES (LOGICA CORREGIDA) ---
-    def show_24v_devices(self):
+    # --- HERRAMIENTA: 24V DEVICES ---
+    def show_24v_tool(self):
         self.clear_frame()
         self.current_frame = ctk.CTkFrame(self.main_container)
         self.current_frame.pack(fill="both", expand=True)
-        ctk.CTkLabel(self.current_frame, text="24V & 0 Satellites Detector", font=("Arial", 18, "bold")).pack(pady=20)
+        ctk.CTkLabel(self.current_frame, text="Filtro Dispositivos 24V", font=("Arial", 18, "bold")).pack(pady=20)
 
-        def proc_24v():
+        def run():
             p = filedialog.askopenfilename(filetypes=[("Log", "*.txt")])
             if not p: return
-            res = []
+            out = []
             seen = set()
-
             with open(p, "r", encoding="utf-8") as f:
                 for line in f:
-                    # Extraer IMEI y Matricula con Regex para evitar fallos de posición
-                    imei_match = re.search(r"'imei':\s*'(\d{15})'", line)
-                    license_match = re.search(r"'vehicle_license':\s*'([^']*)'", line)
+                    try:
+                        s = line.find("{")
+                        d = ast.literal_eval(line[s:line.rfind("}") + 1])
+                        if float(d.get('battery_voltage', 0)) > 20.0:
+                            imei = d.get('imei')
+                            if imei not in seen:
+                                out.append(f"'imei': {imei}  'vehicle_license': '{d.get('vehicle_license', 'N/A')}'")
+                                seen.add(imei)
+                    except:
+                        continue
+            if out:
+                path = os.path.join(os.path.expanduser("~"), "Downloads",
+                                    f"24V_Devices_{datetime.now().strftime('%H%M')}.txt")
+                with open(path, "w") as f: f.write("\n".join(out))
+                messagebox.showinfo("Éxito", f"Archivo generado en Descargas ({len(out)} equipos)")
 
-                    if imei_match:
-                        imei = imei_match.group(1)
-                        lic = license_match.group(1) if license_match else "N/A"
+        ctk.CTkButton(self.current_frame, text="Procesar Log (Batería > 20V)", height=50, command=run).pack(pady=20)
 
-                        # Criterio 1: Cero Satélites
-                        is_zero_sat = "'satellites': 0" in line
+    # --- HERRAMIENTA: 0 SATELITES ---
+    def show_zero_sat_tool(self):
+        self.clear_frame();
+        self.current_frame = ctk.CTkFrame(self.main_container);
+        self.current_frame.pack(fill="both", expand=True)
+        ctk.CTkLabel(self.current_frame, text="Detector 0 Satélites", font=("Arial", 18, "bold")).pack(pady=20)
 
-                        # Criterio 2: Voltaje > 20
-                        is_24v = False
-                        volt_match = re.search(r"'battery_voltage':\s*(\d+\.?\d*)", line)
-                        if volt_match:
-                            if float(volt_match.group(1)) > 20:
-                                is_24v = True
+        def run():
+            p = filedialog.askopenfilename(filetypes=[("Log", "*.txt")])
+            if not p: return
+            out = []
+            seen = set()
+            with open(p, "r", encoding="utf-8") as f:
+                for line in f:
+                    try:
+                        s = line.find("{")
+                        d = ast.literal_eval(line[s:line.rfind("}") + 1])
+                        if d.get('satellites') == 0:
+                            imei = d.get('imei')
+                            if imei not in seen:
+                                out.append(f"'imei': {imei}  'vehicle_license': '{d.get('vehicle_license', 'N/A')}'")
+                                seen.add(imei)
+                    except:
+                        continue
+            if out:
+                path = os.path.join(os.path.expanduser("~"), "Downloads",
+                                    f"ZeroSat_Devices_{datetime.now().strftime('%H%M')}.txt")
+                with open(path, "w") as f: f.write("\n".join(out))
+                messagebox.showinfo("Éxito", "Archivo generado en Descargas")
 
-                        if (is_zero_sat or is_24v) and imei not in seen:
-                            tipo = "0_SAT" if is_zero_sat else "24V"
-                            if is_zero_sat and is_24v: tipo = "AMBOS"
-                            res.append(f"{imei}\t{lic}\t{tipo}")
-                            seen.add(imei)
-
-            if res:
-                path_out = os.path.join(os.path.expanduser("~"), "Downloads",
-                                        f"reporte_24v_0sat_{datetime.now().strftime('%H%M')}.txt")
-                with open(path_out, "w") as f:
-                    f.write("IMEI\tMATRICULA\tMOTIVO\n")
-                    f.write("\n".join(res))
-                messagebox.showinfo("Completado", f"Se encontraron {len(res)} dispositivos.\nGuardado en Descargas.")
-            else:
-                messagebox.showinfo("Info", "No hay coincidencias.")
-
-        ctk.CTkButton(self.current_frame, text="Analizar Log (Filtro 24V / 0 Sat)", height=50, command=proc_24v).pack(
-            pady=20)
+        ctk.CTkButton(self.current_frame, text="Procesar Log (Satélites = 0)", height=50, command=run).pack(pady=20)
 
     # --- HERRAMIENTA: MERGER EXCEL ---
     def show_merger(self):
@@ -297,12 +305,12 @@ class App(ctk.CTk):
             p = filedialog.askopenfilename(filetypes=[("Excel", "*.xlsx")])
             if p: paths[i] = p; labels[i].configure(text=os.path.basename(p), text_color="green")
 
-        for n in ["Gps/Can", "Vehículos", "Dispositivos"]:
+        for n in ["Gps/Can", "Vehículos", "Localizadores"]:
             f = ctk.CTkFrame(self.current_frame);
             f.pack(fill="x", padx=40, pady=5)
             ctk.CTkLabel(f, text=n, width=120).pack(side="left")
             ctk.CTkButton(f, text="Elegir", width=80, command=lambda x=len(labels): sel(x)).pack(side="right")
-            lbl = ctk.CTkLabel(f, text="---", text_color="gray");
+            lbl = ctk.CTkLabel(f, text="Pendiente adjuntar.....", text_color="gray");
             lbl.pack(side="right");
             labels.append(lbl)
 
