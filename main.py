@@ -90,7 +90,7 @@ class App(ctk.CTk):
                 res.insert(0, out)
 
         ctk.CTkButton(t1, text="Execute", command=run_gen).pack(pady=5)
-        ctk.CTkButton(t1, text="Copiar", command=lambda: pyperclip.copy(res.get())).pack()
+        ctk.CTkButton(t1, text="Copy", command=lambda: pyperclip.copy(res.get())).pack()
 
         # Pestaña ICCIDs
         txt_iccid = ctk.CTkTextbox(t2, height=300)
@@ -106,8 +106,8 @@ class App(ctk.CTk):
                 res_iccid.delete(0, "end")
                 res_iccid.insert(0, url)
 
-        ctk.CTkButton(t2, text="Generar URL", command=run_iccid).pack(pady=5)
-        ctk.CTkButton(t2, text="Copiar URL", command=lambda: pyperclip.copy(res_iccid.get())).pack()
+        ctk.CTkButton(t2, text="Generate URL", command=run_iccid).pack(pady=5)
+        ctk.CTkButton(t2, text="Copy URL", command=lambda: pyperclip.copy(res_iccid.get())).pack()
 
     # --- 2. ASCII CONVERTER ---
     def show_ascii_converter(self):
