@@ -143,28 +143,65 @@ class App(ctk.CTk):
 
         ctk.CTkButton(self.current_frame, text="Convert", command=convert).pack(pady=10)
 
-    # --- 3. LOG FILTER IMEI ---
+    # --- 3. LOG FILTER IMEI (MODIFICADO: CON VISTA PREVIA Y COPIADO) ---
     def show_imei_finder(self):
-        self.clear_frame()
-        self.current_frame = ctk.CTkFrame(self.main_container)
-        self.current_frame.pack(fill="both", expand=True)
-        ctk.CTkLabel(self.current_frame, text="Obtain unique IMEIs", font=("Arial", 18, "bold")).pack(pady=20)
+            self.clear_frame()
+            self.current_frame = ctk.CTkFrame(self.main_container)
+            self.current_frame.pack(fill="both", expand=True)
+            ctk.CTkLabel(self.current_frame, text="Extract unique IMEIs", font=("Arial", 18, "bold")).pack(pady=20)
 
-        def run_filter():
-            path = filedialog.askopenfilename(filetypes=[("Text files", "*.txt")])
-            if not path: return
-            with open(path, "r", encoding="utf-8") as f:
-                content = f.read()
-            imeis = sorted(set(re.findall(r"\[(\d{15})\]", content)))
-            if imeis:
-                out_path = os.path.join(os.path.expanduser("~"), "Downloads", "imeis_unique.txt")
-                with open(out_path, "w") as f:
-                    f.write("\n".join(imeis))
-                messagebox.showinfo("Success", f"They have been extracted {len(imeis)} IMEIs in Downloads.")
-            else:
-                messagebox.showinfo("Info", "No IMEIs in the format were found [123...]")
+            # Contenedor para el resultado
+            result_container = ctk.CTkFrame(self.current_frame, fg_color="transparent")
 
-        ctk.CTkButton(self.current_frame, text="Select Log and Extract", height=50, command=run_filter).pack(pady=20)
+            # Caja de texto para mostrar los IMEIs (se crea aquí pero se llena al procesar)
+            txt_preview = ctk.CTkTextbox(result_container, height=300, width=400, font=("Courier New", 12))
+
+            def run_filter():
+                path = filedialog.askopenfilename(filetypes=[("Text files", "*.txt")])
+                if not path: return
+
+                try:
+                    with open(path, "r", encoding="utf-8") as f:
+                        content = f.read()
+
+                    # Buscamos formato [123456789012345]
+                    imeis = sorted(set(re.findall(r"\[(\d{15})\]", content)))
+
+                    if imeis:
+                        # 1. Guardar en archivo como siempre
+                        out_path = os.path.join(os.path.expanduser("~"), "Downloads", "imeis_extraidos.txt")
+                        with open(out_path, "w") as f:
+                            f.write("\n".join(imeis))
+
+                        # 2. Mostrar en la interfaz
+                        result_container.pack(fill="both", expand=True, padx=20, pady=10)
+                        txt_preview.delete("1.0", "end")
+                        txt_preview.insert("end", "\n".join(imeis))
+                        txt_preview.pack(pady=10)
+
+                        btn_copy_res.pack(pady=5)
+
+                        messagebox.showinfo("Success",
+                                            f"They are been extracted {len(imeis)} IMEIs.\nFile save in Downloads.")
+                    else:
+                        messagebox.showinfo("Info", "No IMEIs in the format were found [15 digits]")
+
+                except Exception as e:
+                    messagebox.showerror("Error", f"The file could not be processed: {e}")
+
+            def copy_to_clipboard():
+                contenido = txt_preview.get("1.0", "end-1c")
+                if contenido:
+                    pyperclip.copy(contenido)
+                    messagebox.showinfo("Copied", "List of IMEIs copied to clipboard.")
+
+            # Botón principal
+            ctk.CTkButton(self.current_frame, text="Select Log and Extract", height=50, fg_color="#1f77b4",
+                          command=run_filter).pack(pady=10)
+
+            # Botón de copiar (invisible hasta que haya resultados)
+            btn_copy_res = ctk.CTkButton(result_container, text="Copy List", fg_color="#2ecc71",
+                                         hover_color="#27ae60", command=copy_to_clipboard)
 
     # --- 4. SPEEDS COMPARATOR (GRÁFICA INTERACTIVA + TABLA + CORRECCIÓN FECHAS) ---
     def show_speeds_comparator(self):
@@ -247,7 +284,7 @@ class App(ctk.CTk):
                                 v_line.set_visible(True)
 
                                 annot.xy = (row['datetime'], max(row['obd'], row['gps']))
-                                text = f"Hora: {row['datetime'].strftime('%H:%M:%S')}\nVel. OBD: {row['obd']} km/h\nVel. GPS: {row['gps']} km/h"
+                                text = f"Hour: {row['datetime'].strftime('%H:%M:%S')}\nOBD Speed: {row['obd']} km/h\nGPS Speed: {row['gps']} km/h"
                                 annot.set_text(text)
                                 annot.set_visible(True)
                                 fig.canvas.draw_idle()
@@ -281,17 +318,20 @@ class App(ctk.CTk):
 
             ctk.CTkButton(self.current_frame, text="Load Log and View Comparison", command=analyze).pack(pady=5)
 
-    # --- 5. 24V DEVICES ---
+    # --- 5. 24V DEVICES (MODIFICADO: CON VISTA PREVIA Y COPIADO) ---
     def show_24v_devices(self):
         self.clear_frame()
         self.current_frame = ctk.CTkFrame(self.main_container)
         self.current_frame.pack(fill="both", expand=True)
-        ctk.CTkLabel(self.current_frame, text="24V Equipment Filter", font=("Arial", 18, "bold")).pack(pady=20)
+        ctk.CTkLabel(self.current_frame, text="24V devices filter", font=("Arial", 18, "bold")).pack(pady=20)
+
+        result_container = ctk.CTkFrame(self.current_frame, fg_color="transparent")
+        txt_preview = ctk.CTkTextbox(result_container, height=300, width=500, font=("Courier New", 12))
 
         def run_24v():
             p = filedialog.askopenfilename(filetypes=[("Log", "*.txt")])
             if not p: return
-            out = []
+            out = [];
             seen = set()
             with open(p, "r", encoding="utf-8") as f:
                 for line in f:
@@ -299,49 +339,88 @@ class App(ctk.CTk):
                         s = line.find("{")
                         d = ast.literal_eval(line[s:line.rfind("}") + 1])
                         if float(d.get('battery_voltage', 0)) > 20.0:
-                            if d.get('imei') not in seen:
-                                out.append(
-                                    f"'imei': {d.get('imei')}  'vehicle_license': '{d.get('vehicle_license', 'N/A')}'")
-                                seen.add(d.get('imei'))
+                            imei = d.get('imei')
+                            if imei and imei not in seen:
+                                info = f"IMEI: {imei} | Vehicle: {d.get('vehicle_license', 'N/A')}"
+                                out.append(info)
+                                seen.add(imei)
                     except:
                         continue
+
             if out:
-                with open(os.path.join(os.path.expanduser("~"), "Downloads", "Devices_24V.txt"), "w") as f: f.write(
-                    "\n".join(out))
-                messagebox.showinfo("OK", "File generated in Downloads.")
+                # Guardar archivo
+                path = os.path.join(os.path.expanduser("~"), "Downloads", "Devices_24V.txt")
+                with open(path, "w") as f:
+                    f.write("\n".join(out))
 
-        ctk.CTkButton(self.current_frame, text="Process Log for 24V devices", height=50, command=run_24v).pack(pady=20)
+                # Mostrar en interfaz
+                result_container.pack(fill="both", expand=True, padx=20, pady=10)
+                txt_preview.delete("1.0", "end")
+                txt_preview.insert("end", "\n".join(out))
+                txt_preview.pack(pady=10)
+                btn_copy.pack(pady=5)
+                messagebox.showinfo("OK", "Report generated in Downloads and ready to copy.")
+            else:
+                messagebox.showinfo("Info", "No device with voltage > 20V was found")
 
-    # --- 6. 0 SATELLITES ---
+        def copy_list():
+            pyperclip.copy(txt_preview.get("1.0", "end-1c"))
+            messagebox.showinfo("Copied", "List 24V copied.")
+
+        ctk.CTkButton(self.current_frame, text="Process Log for 24V devices", height=50, command=run_24v).pack(pady=10)
+        btn_copy = ctk.CTkButton(result_container, text="Copy Results", fg_color="#2ecc71", command=copy_list)
+
+    # --- 6. 0 SATELLITES (MODIFICADO: CON VISTA PREVIA Y COPIADO) ---
     def show_0_satellites(self):
-        self.clear_frame()
-        self.current_frame = ctk.CTkFrame(self.main_container)
-        self.current_frame.pack(fill="both", expand=True)
-        ctk.CTkLabel(self.current_frame, text="Devices with 0 satellites", font=("Arial", 18, "bold")).pack(pady=20)
+            self.clear_frame()
+            self.current_frame = ctk.CTkFrame(self.main_container)
+            self.current_frame.pack(fill="both", expand=True)
+            ctk.CTkLabel(self.current_frame, text="0 Satellites devices", font=("Arial", 18, "bold")).pack(pady=20)
 
-        def run_0sat():
-            p = filedialog.askopenfilename(filetypes=[("Log", "*.txt")])
-            if not p: return
-            out = []
-            seen = set()
-            with open(p, "r", encoding="utf-8") as f:
-                for line in f:
-                    try:
-                        s = line.find("{")
-                        d = ast.literal_eval(line[s:line.rfind("}") + 1])
-                        if d.get('satellites') == 0:
-                            if d.get('imei') not in seen:
-                                out.append(
-                                    f"'imei': {d.get('imei')}  'vehicle_license': '{d.get('vehicle_license', 'N/A')}'")
-                                seen.add(d.get('imei'))
-                    except:
-                        continue
-            if out:
-                with open(os.path.join(os.path.expanduser("~"), "Downloads", "Devices_0_Sat.txt"), "w") as f: f.write(
-                    "\n".join(out))
-                messagebox.showinfo("OK", "File generated in Downloads.")
+            result_container = ctk.CTkFrame(self.current_frame, fg_color="transparent")
+            txt_preview = ctk.CTkTextbox(result_container, height=300, width=500, font=("Courier New", 12))
 
-        ctk.CTkButton(self.current_frame, text="Process Log for 0 Sat", height=50, command=run_0sat).pack(pady=20)
+            def run_0sat():
+                p = filedialog.askopenfilename(filetypes=[("Log", "*.txt")])
+                if not p: return
+                out = [];
+                seen = set()
+                with open(p, "r", encoding="utf-8") as f:
+                    for line in f:
+                        try:
+                            s = line.find("{")
+                            d = ast.literal_eval(line[s:line.rfind("}") + 1])
+                            if d.get('satellites') == 0:
+                                imei = d.get('imei')
+                                if imei and imei not in seen:
+                                    info = f"IMEI: {imei} | Vehicle: {d.get('vehicle_license', 'N/A')}"
+                                    out.append(info)
+                                    seen.add(imei)
+                        except:
+                            continue
+
+                if out:
+                    # Guardar archivo
+                    path = os.path.join(os.path.expanduser("~"), "Downloads", "Devices_0Sat.txt")
+                    with open(path, "w") as f:
+                        f.write("\n".join(out))
+
+                    # Mostrar en interfaz
+                    result_container.pack(fill="both", expand=True, padx=20, pady=10)
+                    txt_preview.delete("1.0", "end")
+                    txt_preview.insert("end", "\n".join(out))
+                    txt_preview.pack(pady=10)
+                    btn_copy.pack(pady=5)
+                    messagebox.showinfo("OK", "Satellite report generated.")
+                else:
+                    messagebox.showinfo("Info", "No devices with 0 satellites were found.")
+
+            def copy_list():
+                pyperclip.copy(txt_preview.get("1.0", "end-1c"))
+                messagebox.showinfo("Copied", "0 Satellite devices list copied.")
+
+            ctk.CTkButton(self.current_frame, text="Process Log for 0 Sat", height=50, command=run_0sat).pack(pady=10)
+            btn_copy = ctk.CTkButton(result_container, text="Copy Results", fg_color="#2ecc71", command=copy_list)
 
     # --- 7. MERGER EXCEL ---
     def show_merger(self):
