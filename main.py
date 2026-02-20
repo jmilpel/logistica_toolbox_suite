@@ -10,7 +10,6 @@ from tkinter import messagebox, filedialog
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import ctypes
 
-# Configuración de apariencia
 ctk.set_appearance_mode("System")
 ctk.set_default_color_theme("blue")
 
@@ -20,37 +19,36 @@ class App(ctk.CTk):
         super().__init__()
 
         self.title("Logistica ToolBox Suite")
-        self.geometry("1100x800")
+        self.geometry("1150x850")
 
-        # Configuración del icono
         self.icon_path = "kyros.ico"
         if os.path.exists(self.icon_path):
             self.iconbitmap(self.icon_path)
             try:
-                ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("logistica.toolbox.suite.v2")
+                ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("logistica.toolbox.suite.v3")
             except:
                 pass
 
         self.grid_columnconfigure(1, weight=1)
         self.grid_rowconfigure(0, weight=1)
 
-        # --- SIDEBAR ---
+        # --- SIDEBAR (CORREGIDO ESPACIADO) ---
         self.sidebar_frame = ctk.CTkFrame(self, width=220, corner_radius=0)
         self.sidebar_frame.grid(row=0, column=0, sticky="nsew")
-        self.sidebar_frame.grid_rowconfigure(7, weight=1)
 
         self.logo_label = ctk.CTkLabel(self.sidebar_frame, text="Kyros ToolBox",
                                        font=ctk.CTkFont(size=22, weight="bold"))
         self.logo_label.grid(row=0, column=0, padx=20, pady=(20, 30))
 
+        # Botones ordenados sin filas con peso intermedio
         buttons = [
             ("IMEI / ICCID Gen", self.show_generator),
             ("Ascii2Hex Converter", self.show_ascii_converter),
             ("Log Filter IMEI", self.show_imei_finder),
-            ("Merger Excel", self.show_merger),
             ("Speeds Comparator", self.show_speeds_comparator),
-            ("24V Devices", self.show_24v_tool),
-            ("0 Satellites Detector", self.show_zero_sat_tool)
+            ("24V devices", self.show_24v_devices),
+            ("0 satellites", self.show_0_satellites),
+            ("Merger Excel", self.show_merger)
         ]
 
         for i, (name, cmd) in enumerate(buttons, start=1):
@@ -67,103 +65,108 @@ class App(ctk.CTk):
         if self.current_frame is not None:
             self.current_frame.destroy()
 
-    # --- HERRAMIENTA: IMEI/ICCID ---
+    # --- 1. GENERATOR ---
     def show_generator(self):
         self.clear_frame()
         self.current_frame = ctk.CTkTabview(self.main_container)
         self.current_frame.pack(fill="both", expand=True)
-        t1, t2 = self.current_frame.add("IMEIs"), self.current_frame.add("ICCIDs")
+        t1 = self.current_frame.add("IMEIs")
+        t2 = self.current_frame.add("ICCIDs")
 
-        # IMEI Logic
-        ctk.CTkLabel(t1, text="Listado IMEIs (15 dígitos):").pack(pady=5)
-        txt = ctk.CTkTextbox(t1, height=250);
-        txt.pack(padx=20, pady=5, fill="both", expand=True)
+        # Pestaña IMEIs
+        txt = ctk.CTkTextbox(t1, height=300);
+        txt.pack(padx=20, pady=10, fill="both", expand=True)
         res = ctk.CTkEntry(t1);
         res.pack(padx=20, pady=5, fill="x")
 
-        def run():
+        def run_gen():
             v = [l.strip() for l in txt.get("1.0", "end-1c").splitlines() if len(l.strip()) == 15]
-            if v: res.delete(0, "end"); res.insert(0, " -e " + " -e ".join(v))
+            if v:
+                out = " -e " + " -e ".join(v)
+                init_chain = "cat teltonika.log |grep"
+                finish_chain = " |grep \"'389': \""
+                out = init_chain + out + finish_chain
+                res.delete(0, "end");
+                res.insert(0, out)
 
-        ctk.CTkButton(t1, text="Execute", command=run).pack(pady=5)
-        ctk.CTkButton(t1, text="Copiar", border_width=1,
-                      command=lambda: pyperclip.copy(res.get())).pack(pady=5)
+        ctk.CTkButton(t1, text="Execute", command=run_gen).pack(pady=5)
+        ctk.CTkButton(t1, text="Copiar", command=lambda: pyperclip.copy(res.get())).pack()
 
-        # ICCID Logic
-        ctk.CTkLabel(t2, text="Listado ICCIDs (19 dígitos):").pack(pady=5)
-        txt2 = ctk.CTkTextbox(t2, height=250);
-        txt2.pack(padx=20, pady=5, fill="both", expand=True)
-        res2 = ctk.CTkEntry(t2);
-        res2.pack(padx=20, pady=5, fill="x")
+        # Pestaña ICCIDs
+        txt_iccid = ctk.CTkTextbox(t2, height=300);
+        txt_iccid.pack(padx=20, pady=10, fill="both", expand=True)
+        res_iccid = ctk.CTkEntry(t2);
+        res_iccid.pack(padx=20, pady=5, fill="x")
 
-        def run2():
-            v = [l.strip() for l in txt2.get("1.0", "end-1c").splitlines() if len(l.strip()) == 19]
+        def run_iccid():
+            v = [l.strip() for l in txt_iccid.get("1.0", "end-1c").splitlines() if len(l.strip()) >= 18]
             if v:
                 url = f"https://iot.truphone.com/sms/?preselect={v[0]}"
-                if len(v) > 1: url += "&preselect=" + "&preselect=".join(v[1:])
-                res2.delete(0, "end");
-                res2.insert(0, url)
+                for i in v[1:]: url += f"&preselect={i}"
+                res_iccid.delete(0, "end");
+                res_iccid.insert(0, url)
 
-        ctk.CTkButton(t2, text="Execute", command=run2).pack(pady=5)
-        ctk.CTkButton(t2, text="Copiar", border_width=1,
-                      command=lambda: pyperclip.copy(res2.get())).pack(pady=5)
+        ctk.CTkButton(t2, text="Generar URL", command=run_iccid).pack(pady=5)
+        ctk.CTkButton(t2, text="Copiar URL", command=lambda: pyperclip.copy(res_iccid.get())).pack()
 
-    # --- HERRAMIENTA: ASCII2HEX ---
+    # --- 2. ASCII CONVERTER ---
     def show_ascii_converter(self):
         self.clear_frame()
         self.current_frame = ctk.CTkFrame(self.main_container)
         self.current_frame.pack(fill="both", expand=True)
-        ctk.CTkLabel(self.current_frame, text="Ascii2Hex Converter", font=("Arial", 18, "bold")).pack(pady=15)
-        inp = ctk.CTkEntry(self.current_frame, placeholder_text="Texto ASCII...", width=450);
+        ctk.CTkLabel(self.current_frame, text="Ascii2Hex Converter", font=("Arial", 18, "bold")).pack(pady=20)
+
+        inp = ctk.CTkEntry(self.current_frame, width=400, placeholder_text="Ingrese comando ASCII (ej: setparam 1234)");
         inp.pack(pady=10)
         out = ctk.CTkTextbox(self.current_frame, height=200);
-        out.pack(padx=30, pady=10, fill="x")
+        out.pack(padx=20, pady=10, fill="x")
 
-        def calc_crc(hd):
-            d = bytes.fromhex(hd);
-            c = 0x0000
-            for b in d:
-                c = (c ^ b) & 0xFFFF
+        def calc_crc(hex_str):
+            data = bytes.fromhex(hex_str)
+            crc = 0x0000
+            for byte in data:
+                crc = (crc ^ byte) & 0xFFFF
                 for _ in range(8):
-                    if c & 1:
-                        c = (c >> 1) ^ 0xA001
+                    if crc & 1:
+                        crc = (crc >> 1) ^ 0xA001
                     else:
-                        c = c >> 1
-            return f"{c:04X}"
+                        crc = crc >> 1
+            return f"{crc:08X}"
 
-        def conv():
-            t = inp.get()
-            if not t: return
-            hp = ''.join(f'{ord(c):02x}' for c in t)
-            base = "0C0105" + format(len(hp) // 2, 'x').zfill(8) + hp + "01"
-            crc = calc_crc(base).zfill(8)
-            final = ("00000000" + format(len(base) // 2, 'x').zfill(8) + base + crc).upper()
+        def convert():
+            txt = inp.get()
+            hex_val = ''.join(f'{ord(c):02x}' for c in txt)
+            codec_part = "0C0105" + format(len(hex_val) // 2, 'x').zfill(8) + hex_val + "01"
+            full_msg = "00000000" + format(len(codec_part) // 2, 'x').zfill(8) + codec_part + calc_crc(codec_part)
             out.delete("1.0", "end");
-            out.insert("1.0", final)
+            out.insert("1.0", full_msg.upper())
 
-        ctk.CTkButton(self.current_frame, text="Convertir", command=conv).pack(pady=10)
+        ctk.CTkButton(self.current_frame, text="Convertir", command=convert).pack(pady=10)
 
-    # --- HERRAMIENTA: LOG FILTER IMEI ---
+    # --- 3. LOG FILTER IMEI ---
     def show_imei_finder(self):
         self.clear_frame()
         self.current_frame = ctk.CTkFrame(self.main_container)
         self.current_frame.pack(fill="both", expand=True)
-        ctk.CTkLabel(self.current_frame, text="Log Filter IMEI", font=("Arial", 18, "bold")).pack(pady=20)
+        ctk.CTkLabel(self.current_frame, text="Extractor de IMEIs únicos", font=("Arial", 18, "bold")).pack(pady=20)
 
-        def proc():
-            p = filedialog.askopenfilename(filetypes=[("Text", "*.txt")])
-            if not p: return
-            with open(p, "r", encoding="utf-8") as f:
-                c = f.read()
-            found = sorted(set(re.findall(r"\[(\d{15})\]", c)))
-            if found:
-                out = os.path.join(os.path.expanduser("~"), "Downloads", "imeis_extraidos.txt")
-                with open(out, "w") as f: f.write("\n".join(found))
-                messagebox.showinfo("Éxito", f"Guardado en Descargas. Encontrados: {len(found)}")
+        def run_filter():
+            path = filedialog.askopenfilename(filetypes=[("Text files", "*.txt")])
+            if not path: return
+            with open(path, "r", encoding="utf-8") as f:
+                content = f.read()
+            imeis = sorted(set(re.findall(r"\[(\d{15})\]", content)))
+            if imeis:
+                out_path = os.path.join(os.path.expanduser("~"), "Downloads", "imeis_extraidos.txt")
+                with open(out_path, "w") as f:
+                    f.write("\n".join(imeis))
+                messagebox.showinfo("Éxito", f"Se han extraído {len(imeis)} IMEIs en Descargas.")
+            else:
+                messagebox.showinfo("Info", "No se encontraron IMEIs con formato [123...]")
 
-        ctk.CTkButton(self.current_frame, text="Seleccionar Log", command=proc).pack(pady=30)
+        ctk.CTkButton(self.current_frame, text="Seleccionar Log y Extraer", height=50, command=run_filter).pack(pady=20)
 
-    # --- HERRAMIENTA: SPEEDS COMPARATOR (TOOLTIP DUAL) ---
+    # --- 4. SPEEDS COMPARATOR (CORREGIDO TIEMPO Y TOOLTIP) ---
     def show_speeds_comparator(self):
         self.clear_frame()
         self.current_frame = ctk.CTkFrame(self.main_container)
@@ -228,17 +231,17 @@ class App(ctk.CTk):
 
         ctk.CTkButton(self.current_frame, text="Cargar Log y Graficar", command=analyze).pack(pady=10)
 
-    # --- HERRAMIENTA: 24V DEVICES ---
-    def show_24v_tool(self):
+    # --- 5. 24V DEVICES ---
+    def show_24v_devices(self):
         self.clear_frame()
         self.current_frame = ctk.CTkFrame(self.main_container)
         self.current_frame.pack(fill="both", expand=True)
-        ctk.CTkLabel(self.current_frame, text="Filtro Dispositivos 24V", font=("Arial", 18, "bold")).pack(pady=20)
+        ctk.CTkLabel(self.current_frame, text="Filtro de Equipos a 24V", font=("Arial", 18, "bold")).pack(pady=20)
 
-        def run():
+        def run_24v():
             p = filedialog.askopenfilename(filetypes=[("Log", "*.txt")])
             if not p: return
-            out = []
+            out = [];
             seen = set()
             with open(p, "r", encoding="utf-8") as f:
                 for line in f:
@@ -246,31 +249,30 @@ class App(ctk.CTk):
                         s = line.find("{")
                         d = ast.literal_eval(line[s:line.rfind("}") + 1])
                         if float(d.get('battery_voltage', 0)) > 20.0:
-                            imei = d.get('imei')
-                            if imei not in seen:
-                                out.append(f"'imei': {imei}  'vehicle_license': '{d.get('vehicle_license', 'N/A')}'")
-                                seen.add(imei)
+                            if d.get('imei') not in seen:
+                                out.append(
+                                    f"'imei': {d.get('imei')}  'vehicle_license': '{d.get('vehicle_license', 'N/A')}'")
+                                seen.add(d.get('imei'))
                     except:
                         continue
             if out:
-                path = os.path.join(os.path.expanduser("~"), "Downloads",
-                                    f"24V_Devices_{datetime.now().strftime('%H%M')}.txt")
-                with open(path, "w") as f: f.write("\n".join(out))
-                messagebox.showinfo("Éxito", f"Archivo generado en Descargas ({len(out)} equipos)")
+                with open(os.path.join(os.path.expanduser("~"), "Downloads", "Equipos_24V.txt"), "w") as f: f.write(
+                    "\n".join(out))
+                messagebox.showinfo("OK", "Reporte generado en Descargas.")
 
-        ctk.CTkButton(self.current_frame, text="Procesar Log (Batería > 20V)", height=50, command=run).pack(pady=20)
+        ctk.CTkButton(self.current_frame, text="Procesar Log para 24V", height=50, command=run_24v).pack(pady=20)
 
-    # --- HERRAMIENTA: 0 SATELITES ---
-    def show_zero_sat_tool(self):
-        self.clear_frame();
-        self.current_frame = ctk.CTkFrame(self.main_container);
+    # --- 6. 0 SATELLITES ---
+    def show_0_satellites(self):
+        self.clear_frame()
+        self.current_frame = ctk.CTkFrame(self.main_container)
         self.current_frame.pack(fill="both", expand=True)
-        ctk.CTkLabel(self.current_frame, text="Detector 0 Satélites", font=("Arial", 18, "bold")).pack(pady=20)
+        ctk.CTkLabel(self.current_frame, text="Equipos con 0 Satélites", font=("Arial", 18, "bold")).pack(pady=20)
 
-        def run():
+        def run_0sat():
             p = filedialog.askopenfilename(filetypes=[("Log", "*.txt")])
             if not p: return
-            out = []
+            out = [];
             seen = set()
             with open(p, "r", encoding="utf-8") as f:
                 for line in f:
@@ -278,21 +280,20 @@ class App(ctk.CTk):
                         s = line.find("{")
                         d = ast.literal_eval(line[s:line.rfind("}") + 1])
                         if d.get('satellites') == 0:
-                            imei = d.get('imei')
-                            if imei not in seen:
-                                out.append(f"'imei': {imei}  'vehicle_license': '{d.get('vehicle_license', 'N/A')}'")
-                                seen.add(imei)
+                            if d.get('imei') not in seen:
+                                out.append(
+                                    f"'imei': {d.get('imei')}  'vehicle_license': '{d.get('vehicle_license', 'N/A')}'")
+                                seen.add(d.get('imei'))
                     except:
                         continue
             if out:
-                path = os.path.join(os.path.expanduser("~"), "Downloads",
-                                    f"ZeroSat_Devices_{datetime.now().strftime('%H%M')}.txt")
-                with open(path, "w") as f: f.write("\n".join(out))
-                messagebox.showinfo("Éxito", "Archivo generado en Descargas")
+                with open(os.path.join(os.path.expanduser("~"), "Downloads", "Equipos_0Sat.txt"), "w") as f: f.write(
+                    "\n".join(out))
+                messagebox.showinfo("OK", "Reporte generado en Descargas.")
 
-        ctk.CTkButton(self.current_frame, text="Procesar Log (Satélites = 0)", height=50, command=run).pack(pady=20)
+        ctk.CTkButton(self.current_frame, text="Procesar Log para 0 Sat", height=50, command=run_0sat).pack(pady=20)
 
-    # --- HERRAMIENTA: MERGER EXCEL ---
+    # --- 7. MERGER EXCEL ---
     def show_merger(self):
         self.clear_frame()
         self.current_frame = ctk.CTkFrame(self.main_container)
@@ -305,21 +306,24 @@ class App(ctk.CTk):
             p = filedialog.askopenfilename(filetypes=[("Excel", "*.xlsx")])
             if p: paths[i] = p; labels[i].configure(text=os.path.basename(p), text_color="green")
 
-        for n in ["Gps/Can", "Vehículos", "Localizadores"]:
+        for n in ["Gps/Can", "Localizadores", "Vehículos"]:
             f = ctk.CTkFrame(self.current_frame);
             f.pack(fill="x", padx=40, pady=5)
             ctk.CTkLabel(f, text=n, width=120).pack(side="left")
             ctk.CTkButton(f, text="Elegir", width=80, command=lambda x=len(labels): sel(x)).pack(side="right")
-            lbl = ctk.CTkLabel(f, text="Pendiente adjuntar.....", text_color="gray");
+            lbl = ctk.CTkLabel(f, text="Esperando archivo...", text_color="gray");
             lbl.pack(side="right");
             labels.append(lbl)
 
         def fusion():
-            if not all(paths): return
-            df1, df2, df3 = pd.read_excel(paths[0]), pd.read_excel(paths[1]), pd.read_excel(paths[2])
-            res = pd.merge(df1, df2, on='IMEI', how='left').merge(df3, on='IMEI', how='left')
-            res.to_excel(os.path.join(os.path.expanduser("~"), "Downloads", "Merge_Final.xlsx"), index=False)
-            messagebox.showinfo("OK", "Archivo en Descargas.")
+            if not all(paths): messagebox.showwarning("Aviso", "Adjunte los 3 archivos"); return
+            try:
+                df1, df2, df3 = pd.read_excel(paths[0]), pd.read_excel(paths[1]), pd.read_excel(paths[2])
+                res = pd.merge(df1, df2, on='IMEI', how='left').merge(df3, on='IMEI', how='left')
+                res.to_excel(os.path.join(os.path.expanduser("~"), "Downloads", "Kyros_Merged.xlsx"), index=False)
+                messagebox.showinfo("Éxito", "Fusionado en Descargas.")
+            except Exception as e:
+                messagebox.showerror("Error", str(e))
 
         ctk.CTkButton(self.current_frame, text="FUSIONAR", fg_color="green", command=fusion).pack(pady=20)
 
