@@ -44,7 +44,7 @@ class App(ctk.CTk):
         buttons = [
             ("IMEI / ICCID Gen", self.show_generator),
             ("Ascii2Hex Converter", self.show_ascii_converter),
-            ("Log Filter IMEI", self.show_imei_finder),
+            ("IMEI Log Filter", self.show_imei_finder),
             ("Speeds Comparator", self.show_speeds_comparator),
             ("24V devices", self.show_24v_devices),
             ("0 satellites", self.show_0_satellites),
@@ -116,7 +116,7 @@ class App(ctk.CTk):
         self.current_frame.pack(fill="both", expand=True)
         ctk.CTkLabel(self.current_frame, text="Ascii2Hex Converter", font=("Arial", 18, "bold")).pack(pady=20)
 
-        inp = ctk.CTkEntry(self.current_frame, width=400, placeholder_text="Ingrese comando ASCII (ej: setparam 1234)");
+        inp = ctk.CTkEntry(self.current_frame, width=400, placeholder_text="Insert ASCII command (ie: setparam 1234)");
         inp.pack(pady=10)
         out = ctk.CTkTextbox(self.current_frame, height=200);
         out.pack(padx=20, pady=10, fill="x")
@@ -141,14 +141,14 @@ class App(ctk.CTk):
             out.delete("1.0", "end");
             out.insert("1.0", full_msg.upper())
 
-        ctk.CTkButton(self.current_frame, text="Convertir", command=convert).pack(pady=10)
+        ctk.CTkButton(self.current_frame, text="Convert", command=convert).pack(pady=10)
 
     # --- 3. LOG FILTER IMEI ---
     def show_imei_finder(self):
         self.clear_frame()
         self.current_frame = ctk.CTkFrame(self.main_container)
         self.current_frame.pack(fill="both", expand=True)
-        ctk.CTkLabel(self.current_frame, text="Extractor de IMEIs únicos", font=("Arial", 18, "bold")).pack(pady=20)
+        ctk.CTkLabel(self.current_frame, text="Obtain unique IMEIs", font=("Arial", 18, "bold")).pack(pady=20)
 
         def run_filter():
             path = filedialog.askopenfilename(filetypes=[("Text files", "*.txt")])
@@ -157,86 +157,136 @@ class App(ctk.CTk):
                 content = f.read()
             imeis = sorted(set(re.findall(r"\[(\d{15})\]", content)))
             if imeis:
-                out_path = os.path.join(os.path.expanduser("~"), "Downloads", "imeis_extraidos.txt")
+                out_path = os.path.join(os.path.expanduser("~"), "Downloads", "imeis_unique.txt")
                 with open(out_path, "w") as f:
                     f.write("\n".join(imeis))
-                messagebox.showinfo("Éxito", f"Se han extraído {len(imeis)} IMEIs en Descargas.")
+                messagebox.showinfo("Success", f"They have been extracted {len(imeis)} IMEIs in Downloads.")
             else:
-                messagebox.showinfo("Info", "No se encontraron IMEIs con formato [123...]")
+                messagebox.showinfo("Info", "No IMEIs in the format were found [123...]")
 
-        ctk.CTkButton(self.current_frame, text="Seleccionar Log y Extraer", height=50, command=run_filter).pack(pady=20)
+        ctk.CTkButton(self.current_frame, text="Select Log and Extract", height=50, command=run_filter).pack(pady=20)
 
-    # --- 4. SPEEDS COMPARATOR (CORREGIDO TIEMPO Y TOOLTIP) ---
+    # --- 4. SPEEDS COMPARATOR (GRÁFICA INTERACTIVA + TABLA + CORRECCIÓN FECHAS) ---
     def show_speeds_comparator(self):
-        self.clear_frame()
-        self.current_frame = ctk.CTkFrame(self.main_container)
-        self.current_frame.pack(fill="both", expand=True)
-        ctk.CTkLabel(self.current_frame, text="Speeds Comparator (OBD vs GPS)", font=("Arial", 18, "bold")).pack(
-            pady=10)
-        container = ctk.CTkFrame(self.current_frame, fg_color="white")
-        container.pack(fill="both", expand=True, padx=20, pady=10)
+            self.clear_frame()
+            self.current_frame = ctk.CTkFrame(self.main_container)
+            self.current_frame.pack(fill="both", expand=True)
+            ctk.CTkLabel(self.current_frame, text="Speeds Comparator (OBD vs GPS)", font=("Arial", 18, "bold")).pack(
+                pady=10)
 
-        def analyze():
-            p = filedialog.askopenfilename(filetypes=[("Log", "*.txt")])
-            if not p: return
-            rows = []
-            with open(p, "r", encoding="utf-8") as f:
-                for line in f:
-                    s = line.find("{")
-                    if s != -1:
-                        try:
-                            d = ast.literal_eval(line[s:line.rfind("}") + 1])
-                            avl = d.get("avl", {})
-                            v37 = int(str(avl.get("37", 0)), 16) if avl.get("37") else 0
-                            v24 = int(str(avl.get("24", 0)), 16) if avl.get("24") else 0
-                            rows.append({"t": d["msg_timestamp"], "obd": v37, "gps": v24})
-                        except:
-                            continue
-            if rows:
-                df = pd.DataFrame(rows).sort_values("t")
-                df["datetime"] = pd.to_datetime(df["t"], unit='ms')
-                fig, ax = plt.subplots(figsize=(8, 4))
-                l1, = ax.plot(df["datetime"], df["obd"], label="OBD (37)", marker='o', markersize=5)
-                l2, = ax.plot(df["datetime"], df["gps"], label="GPS (24)", marker='o', markersize=5)
-                ax.grid(True, linestyle='--', alpha=0.6);
-                ax.legend()
+            content_container = ctk.CTkFrame(self.current_frame, fg_color="transparent")
+            content_container.pack(fill="both", expand=True, padx=20, pady=10)
 
-                annot = ax.annotate("", xy=(0, 0), xytext=(20, 20), textcoords="offset points",
-                                    bbox=dict(boxstyle="round", fc="w", ec="0.5", alpha=0.9),
-                                    arrowprops=dict(arrowstyle="->"))
-                annot.set_visible(False)
+            def analyze():
+                p = filedialog.askopenfilename(filetypes=[("Log", "*.txt")])
+                if not p: return
 
-                def hover(event):
-                    if event.inaxes == ax:
-                        cont1, ind1 = l1.contains(event)
-                        cont2, ind2 = l2.contains(event)
-                        if cont1 or cont2:
-                            idx = ind1["ind"][0] if cont1 else ind2["ind"][0]
-                            x = df["datetime"].iloc[idx]
-                            y_obd = df["obd"].iloc[idx]
-                            y_gps = df["gps"].iloc[idx]
-                            annot.xy = (x, y_obd if cont1 else y_gps)
-                            annot.set_text(f"Hora: {x.strftime('%H:%M:%S')}\nOBD: {y_obd} km/h\nGPS: {y_gps} km/h")
-                            annot.set_visible(True)
+                for widget in content_container.winfo_children():
+                    widget.destroy()
+
+                rows = []
+                with open(p, "r", encoding="utf-8") as f:
+                    for line in f:
+                        s = line.find("{")
+                        if s != -1:
+                            try:
+                                d = ast.literal_eval(line[s:line.rfind("}") + 1])
+                                avl = d.get("avl", {})
+                                v37 = int(str(avl.get("37", 0)), 16) if avl.get("37") else 0
+                                v24 = int(str(avl.get("24", 0)), 16) if avl.get("24") else 0
+                                rows.append({"t": d["msg_timestamp"], "obd": v37, "gps": v24})
+                            except:
+                                continue
+
+                if rows:
+                    df = pd.DataFrame(rows).sort_values("t")
+                    # Forzamos la conversión a datetime especificando milisegundos
+                    df["datetime"] = pd.to_datetime(df["t"], unit='ms')
+
+                    # --- GRÁFICA ---
+                    graph_frame = ctk.CTkFrame(content_container, fg_color="white")
+                    graph_frame.pack(fill="both", expand=True, pady=(0, 10))
+
+                    fig, ax = plt.subplots(figsize=(8, 3.5))
+
+                    # Usamos la columna 'datetime' directamente para el eje X
+                    l1, = ax.plot(df["datetime"], df["obd"], label="OBD (37)", marker='o', markersize=4,
+                                  color='#1f77b4', linestyle='-')
+                    l2, = ax.plot(df["datetime"], df["gps"], label="GPS (24)", marker='o', markersize=4,
+                                  color='#ff7f0e', linestyle='-')
+
+                    ax.grid(True, linestyle='--', alpha=0.6)
+                    ax.legend()
+
+                    # Ajuste automático del eje X para evitar el error de 1970
+                    ax.set_xlim(df["datetime"].min(), df["datetime"].max())
+
+                    plt.xticks(rotation=20)
+                    fig.tight_layout()
+
+                    # Elementos del Tooltip e interactividad
+                    v_line = ax.axvline(color='red', linestyle='--', alpha=0.5, visible=False)
+                    annot = ax.annotate("", xy=(0, 0), xytext=(15, 15), textcoords="offset points",
+                                        bbox=dict(boxstyle="round", fc="w", ec="0.5", alpha=0.9),
+                                        arrowprops=dict(arrowstyle="->"))
+                    annot.set_visible(False)
+
+                    def hover(event):
+                        if event.inaxes == ax:
+                            # Convertir la posición X del evento (float) a datetime
+                            # Matplotlib usa días desde 1970-01-01 en punto flotante
+                            try:
+                                import matplotlib.dates as mdates
+                                x_dt = mdates.num2date(event.xdata).replace(tzinfo=None)
+
+                                # Encontrar el índice más cercano en el DataFrame
+                                idx = (df['datetime'] - x_dt).abs().idxmin()
+                                row = df.loc[idx]
+
+                                v_line.set_xdata([row['datetime']])
+                                v_line.set_visible(True)
+
+                                annot.xy = (row['datetime'], max(row['obd'], row['gps']))
+                                text = f"Hora: {row['datetime'].strftime('%H:%M:%S')}\nVel. OBD: {row['obd']} km/h\nVel. GPS: {row['gps']} km/h"
+                                annot.set_text(text)
+                                annot.set_visible(True)
+                                fig.canvas.draw_idle()
+                            except:
+                                pass
+                        else:
+                            v_line.set_visible(False)
+                            annot.set_visible(False)
                             fig.canvas.draw_idle()
-                            return
-                    if annot.get_visible():
-                        annot.set_visible(False);
-                        fig.canvas.draw_idle()
 
-                canvas = FigureCanvasTkAgg(fig, master=container)
-                canvas.draw();
-                canvas.get_tk_widget().pack(fill="both", expand=True)
-                fig.canvas.mpl_connect("motion_notify_event", hover)
+                    canvas = FigureCanvasTkAgg(fig, master=graph_frame)
+                    canvas.draw()
+                    canvas.get_tk_widget().pack(fill="both", expand=True)
+                    fig.canvas.mpl_connect("motion_notify_event", hover)
 
-        ctk.CTkButton(self.current_frame, text="Cargar Log y Graficar", command=analyze).pack(pady=10)
+                    # --- TABLA ---
+                    table_frame = ctk.CTkFrame(content_container)
+                    table_frame.pack(fill="both", expand=True)
+
+                    txt_table = ctk.CTkTextbox(table_frame, font=("Courier New", 12))
+                    txt_table.pack(fill="both", expand=True, padx=10, pady=5)
+
+                    header = f"{'TEMPORAL INSTANT':<25} | {'OBD SPEED (km/h)':<18} | {'GPS SPEED (km/h)':<18}\n"
+                    txt_table.insert("end", header + ("-" * 70) + "\n")
+
+                    for _, row in df.iterrows():
+                        txt_table.insert("end",
+                                         f"{row['datetime'].strftime('%Y-%m-%d %H:%M:%S'):<25} | {row['obd']:<18} | {row['gps']:<18}\n")
+
+                    txt_table.configure(state="disabled")
+
+            ctk.CTkButton(self.current_frame, text="Load Log and View Comparison", command=analyze).pack(pady=5)
 
     # --- 5. 24V DEVICES ---
     def show_24v_devices(self):
         self.clear_frame()
         self.current_frame = ctk.CTkFrame(self.main_container)
         self.current_frame.pack(fill="both", expand=True)
-        ctk.CTkLabel(self.current_frame, text="Filtro de Equipos a 24V", font=("Arial", 18, "bold")).pack(pady=20)
+        ctk.CTkLabel(self.current_frame, text="24V Equipment Filter", font=("Arial", 18, "bold")).pack(pady=20)
 
         def run_24v():
             p = filedialog.askopenfilename(filetypes=[("Log", "*.txt")])
@@ -256,18 +306,18 @@ class App(ctk.CTk):
                     except:
                         continue
             if out:
-                with open(os.path.join(os.path.expanduser("~"), "Downloads", "Equipos_24V.txt"), "w") as f: f.write(
+                with open(os.path.join(os.path.expanduser("~"), "Downloads", "Devices_24V.txt"), "w") as f: f.write(
                     "\n".join(out))
-                messagebox.showinfo("OK", "Reporte generado en Descargas.")
+                messagebox.showinfo("OK", "File generated in Downloads.")
 
-        ctk.CTkButton(self.current_frame, text="Procesar Log para 24V", height=50, command=run_24v).pack(pady=20)
+        ctk.CTkButton(self.current_frame, text="Process Log for 24V devices", height=50, command=run_24v).pack(pady=20)
 
     # --- 6. 0 SATELLITES ---
     def show_0_satellites(self):
         self.clear_frame()
         self.current_frame = ctk.CTkFrame(self.main_container)
         self.current_frame.pack(fill="both", expand=True)
-        ctk.CTkLabel(self.current_frame, text="Equipos con 0 Satélites", font=("Arial", 18, "bold")).pack(pady=20)
+        ctk.CTkLabel(self.current_frame, text="Devices with 0 satellites", font=("Arial", 18, "bold")).pack(pady=20)
 
         def run_0sat():
             p = filedialog.askopenfilename(filetypes=[("Log", "*.txt")])
@@ -287,11 +337,11 @@ class App(ctk.CTk):
                     except:
                         continue
             if out:
-                with open(os.path.join(os.path.expanduser("~"), "Downloads", "Equipos_0Sat.txt"), "w") as f: f.write(
+                with open(os.path.join(os.path.expanduser("~"), "Downloads", "Devices_0_Sat.txt"), "w") as f: f.write(
                     "\n".join(out))
-                messagebox.showinfo("OK", "Reporte generado en Descargas.")
+                messagebox.showinfo("OK", "File generated in Downloads.")
 
-        ctk.CTkButton(self.current_frame, text="Procesar Log para 0 Sat", height=50, command=run_0sat).pack(pady=20)
+        ctk.CTkButton(self.current_frame, text="Process Log for 0 Sat", height=50, command=run_0sat).pack(pady=20)
 
     # --- 7. MERGER EXCEL ---
     def show_merger(self):
@@ -300,32 +350,32 @@ class App(ctk.CTk):
         self.current_frame.pack(fill="both", expand=True)
         paths = [None, None, None];
         labels = []
-        ctk.CTkLabel(self.current_frame, text="Excel Merger por IMEI", font=("Arial", 18, "bold")).pack(pady=15)
+        ctk.CTkLabel(self.current_frame, text="Excel Merger by IMEI", font=("Arial", 18, "bold")).pack(pady=15)
 
         def sel(i):
             p = filedialog.askopenfilename(filetypes=[("Excel", "*.xlsx")])
             if p: paths[i] = p; labels[i].configure(text=os.path.basename(p), text_color="green")
 
-        for n in ["Gps/Can", "Localizadores", "Vehículos"]:
+        for n in ["Gps/Can", "Device", "Vehicles"]:
             f = ctk.CTkFrame(self.current_frame);
             f.pack(fill="x", padx=40, pady=5)
             ctk.CTkLabel(f, text=n, width=120).pack(side="left")
-            ctk.CTkButton(f, text="Elegir", width=80, command=lambda x=len(labels): sel(x)).pack(side="right")
-            lbl = ctk.CTkLabel(f, text="Esperando archivo...", text_color="gray");
+            ctk.CTkButton(f, text="Select", width=80, command=lambda x=len(labels): sel(x)).pack(side="right")
+            lbl = ctk.CTkLabel(f, text="Waiting file...", text_color="gray");
             lbl.pack(side="right");
             labels.append(lbl)
 
         def fusion():
-            if not all(paths): messagebox.showwarning("Aviso", "Adjunte los 3 archivos"); return
+            if not all(paths): messagebox.showwarning("Warning", "Please attach the 3 files"); return
             try:
                 df1, df2, df3 = pd.read_excel(paths[0]), pd.read_excel(paths[1]), pd.read_excel(paths[2])
                 res = pd.merge(df1, df2, on='IMEI', how='left').merge(df3, on='IMEI', how='left')
                 res.to_excel(os.path.join(os.path.expanduser("~"), "Downloads", "Kyros_Merged.xlsx"), index=False)
-                messagebox.showinfo("Éxito", "Fusionado en Descargas.")
+                messagebox.showinfo("Success", "Merged into Downloads.")
             except Exception as e:
                 messagebox.showerror("Error", str(e))
 
-        ctk.CTkButton(self.current_frame, text="FUSIONAR", fg_color="green", command=fusion).pack(pady=20)
+        ctk.CTkButton(self.current_frame, text="MERGE", fg_color="green", command=fusion).pack(pady=20)
 
 
 if __name__ == "__main__":
