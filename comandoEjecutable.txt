@@ -1,0 +1,11 @@
+
+pyinstaller --noconsole --onefile --windowed --clean --name="URL IMEI_ICCID generator" --collect-all  customtkinter generador.py
+pyinstaller --noconsole --onefile --name="URL IMEI_ICCID generator" --collect-all  customtkinter generador.py
+pyinstaller --noconsole --onefile --clean --name "Generador_IMEI_ICCID" --icon="sim_01.ico" --collect-all customtkinter generador.py
+
+
+--noconsole: No abrirá la ventana negra de comandos al iniciar.
+
+--onefile: Crea un único archivo .exe.
+
+--collect-all customtkinter: Asegura que el diseño visual se incluya correctamente.
