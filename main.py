@@ -18,14 +18,14 @@ class App(ctk.CTk):
     def __init__(self):
         super().__init__()
 
-        self.title("Logistica ToolBox Suite")
+        self.title("Logistica ToolBox Suite v3.2")
         self.geometry("1150x850")
 
         self.icon_path = "kyros.ico"
         if os.path.exists(self.icon_path):
             self.iconbitmap(self.icon_path)
             try:
-                ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("logistica.toolbox.suite.v3")
+                ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("logistica.toolbox.suite.v3.2")
             except:
                 pass
 
@@ -76,8 +76,6 @@ class App(ctk.CTk):
         # Pestaña IMEIs
         txt = ctk.CTkTextbox(t1, height=300)
         txt.pack(padx=20, pady=10, fill="both", expand=True)
-        res = ctk.CTkEntry(t1)
-        res.pack(padx=20, pady=5, fill="x")
 
         def run_gen():
             v = [l.strip() for l in txt.get("1.0", "end-1c").splitlines() if len(l.strip()) == 15]
@@ -90,13 +88,13 @@ class App(ctk.CTk):
                 res.insert(0, out)
 
         ctk.CTkButton(t1, text="Execute", command=run_gen).pack(pady=5)
+        res = ctk.CTkEntry(t1)
+        res.pack(padx=20, pady=5, fill="x")
         ctk.CTkButton(t1, text="Copy", command=lambda: pyperclip.copy(res.get())).pack()
 
         # Pestaña ICCIDs
         txt_iccid = ctk.CTkTextbox(t2, height=300)
         txt_iccid.pack(padx=20, pady=10, fill="both", expand=True)
-        res_iccid = ctk.CTkEntry(t2)
-        res_iccid.pack(padx=20, pady=5, fill="x")
 
         def run_iccid():
             v = [l.strip() for l in txt_iccid.get("1.0", "end-1c").splitlines() if len(l.strip()) >= 18]
@@ -107,6 +105,8 @@ class App(ctk.CTk):
                 res_iccid.insert(0, url)
 
         ctk.CTkButton(t2, text="Generate URL", command=run_iccid).pack(pady=5)
+        res_iccid = ctk.CTkEntry(t2)
+        res_iccid.pack(padx=20, pady=5, fill="x")
         ctk.CTkButton(t2, text="Copy URL", command=lambda: pyperclip.copy(res_iccid.get())).pack()
 
     # --- 2. ASCII CONVERTER ---
@@ -118,8 +118,6 @@ class App(ctk.CTk):
 
         inp = ctk.CTkEntry(self.current_frame, width=400, placeholder_text="Insert ASCII command (ie: setparam 1234)")
         inp.pack(pady=10)
-        out = ctk.CTkTextbox(self.current_frame, height=200)
-        out.pack(padx=20, pady=10, fill="x")
 
         def calc_crc(hex_str):
             data = bytes.fromhex(hex_str)
@@ -142,6 +140,8 @@ class App(ctk.CTk):
             out.insert("1.0", full_msg.upper())
 
         ctk.CTkButton(self.current_frame, text="Convert", command=convert).pack(pady=10)
+        out = ctk.CTkTextbox(self.current_frame, height=200)
+        out.pack(padx=20, pady=10, fill="x")
 
     # --- 3. LOG FILTER IMEI (MODIFICADO: CON VISTA PREVIA Y COPIADO) ---
     def show_imei_finder(self):
