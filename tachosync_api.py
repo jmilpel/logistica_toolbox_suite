@@ -45,7 +45,7 @@ def get_drivers_ordered(headers, url, orderby, descending, pagenumber, pagesize,
         response = response.json()
         entries_temp = response['items']
         for entry in entries_temp:
-            print(f"updatedAt: {entry['updatedAt']}, company: {entry['company']['name']}, cardNumber: {entry['cardNumber']}, cardName: {entry['cardName']}")
+            # print(f"updatedAt: {entry['updatedAt']}, company: {entry['company']['name']}, cardNumber: {entry['cardNumber']}, cardName: {entry['cardName']}")
             entries[entry['id']] = entry
     return entries
 

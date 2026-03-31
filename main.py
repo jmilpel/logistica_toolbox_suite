@@ -24,7 +24,7 @@ class App(ctk.CTk):
     def __init__(self):
         super().__init__()
 
-        self.title("Logistica ToolBox Suite v3.2")
+        self.title("Logistica ToolBox Suite v3.3")
         self.geometry("1150x850")
 
         # Fuentes para la nueva herramienta
@@ -213,7 +213,7 @@ class App(ctk.CTk):
 
         def copy_to_clipboard():
             pyperclip.copy(txt_preview.get("1.0", "end-1c"))
-            messagebox.showinfo("Copied", "Copied to clipboard.")
+            # messagebox.showinfo("Copied", "Copied to clipboard.")
 
         ctk.CTkButton(self.current_frame, text="Select Log and Extract", height=50, fg_color="#1f77b4",
                       command=run_filter).pack(pady=10)
@@ -413,15 +413,15 @@ class App(ctk.CTk):
         table_f.pack(fill="both", expand=True, padx=10, pady=10)
 
         style = ttk.Style()
-        style.configure("Custom.Treeview", background="#2b2b2b", foreground="white",
+        style.configure("Custom.Treeview", background="#ffffff", foreground="black",
                         fieldbackground="#2b2b2b", rowheight=30, font=self.font_table)
-        style.configure("Custom.Treeview.Heading", font=("Segoe UI", 12, "bold"))
+        style.configure("Custom.Treeview.Heading", background="#65C9EB", font=("Segoe UI", 12, "bold"))
         style.map("Custom.Treeview", background=[('selected', '#1f538d')])
 
-        cols = ("updatedAt", "company", "cardNumber", "cardName")
+        cols = ("Updated At", "Company", "Card Number", "Card Name")
         tree = ttk.Treeview(table_f, columns=cols, show='headings', style="Custom.Treeview")
         for col in cols:
-            tree.heading(col, text=col.capitalize())
+            tree.heading(col, text=col.format()) #text=col.capitalize()
             tree.column(col, width=150)
 
         scrollbar = ttk.Scrollbar(table_f, orient="vertical", command=tree.yview)
@@ -440,7 +440,7 @@ class App(ctk.CTk):
 
             try:
                 companies = api.get_companies(headers)
-                drivers = api.get_drivers_ordered(headers, api.get_drivers_url, "UpdatedAt", "true", 1, 50, companies)
+                drivers = api.get_drivers_ordered(headers, api.get_drivers_url, "UpdatedAt", "true", 1, 100, companies)
 
                 for d_id, d in drivers.items():
                     d_date = datetime.strptime(d['updatedAt'][:10], "%Y-%m-%d")
@@ -456,7 +456,7 @@ class App(ctk.CTk):
         # Tip para copiar
         tree.bind("<Control-c>", lambda e: self.copy_table_selection(tree))
         ctk.CTkLabel(self.current_frame, text="Tip: Selecciona filas y pulsa Ctrl+C para copiar",
-                     font=("Arial", 10)).pack(pady=5)
+                     font=("Arial", 14)).pack(pady=5)
 
 
 if __name__ == "__main__":
