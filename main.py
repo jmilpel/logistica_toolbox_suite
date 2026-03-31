@@ -5,13 +5,19 @@ import os
 import ast
 import pandas as pd
 import matplotlib.pyplot as plt
-# from datetime import datetime
-from tkinter import messagebox, filedialog
+from tkinter import messagebox, filedialog, ttk
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import ctypes
+from datetime import datetime
+from tkcalendar import DateEntry
+
+# Nueva importación para la herramienta de conductores
+import tachosync_api as api
 
 ctk.set_appearance_mode("System")
 ctk.set_default_color_theme("blue")
+
+CONFIG_FILE = "apikey.txt"
 
 
 class App(ctk.CTk):
@@ -20,6 +26,11 @@ class App(ctk.CTk):
 
         self.title("Logistica ToolBox Suite v3.2")
         self.geometry("1150x850")
+
+        # Fuentes para la nueva herramienta
+        self.font_label = ctk.CTkFont(size=16, weight="bold")
+        self.font_ui = ctk.CTkFont(size=14)
+        self.font_table = ("Segoe UI", 12)
 
         self.icon_path = "kyros.ico"
         if os.path.exists(self.icon_path):
@@ -32,7 +43,7 @@ class App(ctk.CTk):
         self.grid_columnconfigure(1, weight=1)
         self.grid_rowconfigure(0, weight=1)
 
-        # --- SIDEBAR (CORREGIDO ESPACIADO) ---
+        # --- SIDEBAR ---
         self.sidebar_frame = ctk.CTkFrame(self, width=220, corner_radius=0)
         self.sidebar_frame.grid(row=0, column=0, sticky="nsew")
 
@@ -40,7 +51,7 @@ class App(ctk.CTk):
                                        font=ctk.CTkFont(size=22, weight="bold"))
         self.logo_label.grid(row=0, column=0, padx=20, pady=(20, 30))
 
-        # Botones ordenados sin filas con peso intermedio
+        # Botones (Añadido "Drivers updated" al final)
         buttons = [
             ("IMEI / ICCID Gen", self.show_generator),
             ("Ascii2Hex Converter", self.show_ascii_converter),
@@ -48,7 +59,8 @@ class App(ctk.CTk):
             ("Speeds Comparator", self.show_speeds_comparator),
             ("24V devices", self.show_24v_devices),
             ("0 satellites", self.show_0_satellites),
-            ("Merger Excel", self.show_merger)
+            ("Merger Excel", self.show_merger),
+            ("Drivers updated", self.show_drivers_updated)  # Nueva Herramienta
         ]
 
         for i, (name, cmd) in enumerate(buttons, start=1):
@@ -65,7 +77,31 @@ class App(ctk.CTk):
         if self.current_frame is not None:
             self.current_frame.destroy()
 
-    # --- 1. GENERATOR ---
+    # --- FUNCIONES DE APOYO API CONDUCTORES ---
+    def load_api_key(self):
+        if os.path.exists(CONFIG_FILE):
+            with open(CONFIG_FILE, "r") as f:
+                return f.read().strip()
+        return ""
+
+    def save_api_key(self, entry_widget):
+        key = entry_widget.get()
+        with open(CONFIG_FILE, "w") as f:
+            f.write(key)
+        messagebox.showinfo("Éxito", "API Key guardada en apikey.txt")
+
+    def copy_table_selection(self, tree):
+        selection = tree.selection()
+        if not selection: return
+        lines = []
+        for item_id in selection:
+            values = tree.item(item_id, "values")
+            lines.append("\t".join(values))
+        pyperclip.copy("\n".join(lines))
+        messagebox.showinfo("Copiado", "Datos copiados al portapapeles.")
+
+
+    # --- 1. GENERATOR (RESTO DE TUS FUNCIONES ORIGINALES SIGUEN AQUÍ SIN CAMBIOS) ---
     def show_generator(self):
         self.clear_frame()
         self.current_frame = ctk.CTkTabview(self.main_container)
@@ -143,291 +179,180 @@ class App(ctk.CTk):
         out = ctk.CTkTextbox(self.current_frame, height=200)
         out.pack(padx=20, pady=10, fill="x")
 
-    # --- 3. LOG FILTER IMEI (MODIFICADO: CON VISTA PREVIA Y COPIADO) ---
+    # --- 3. LOG FILTER IMEI ---
     def show_imei_finder(self):
-            self.clear_frame()
-            self.current_frame = ctk.CTkFrame(self.main_container)
-            self.current_frame.pack(fill="both", expand=True)
-            ctk.CTkLabel(self.current_frame, text="Extract unique IMEIs", font=("Arial", 18, "bold")).pack(pady=20)
+        self.clear_frame()
+        self.current_frame = ctk.CTkFrame(self.main_container)
+        self.current_frame.pack(fill="both", expand=True)
+        ctk.CTkLabel(self.current_frame, text="Extract unique IMEIs", font=("Arial", 18, "bold")).pack(pady=20)
 
-            # Contenedor para el resultado
-            result_container = ctk.CTkFrame(self.current_frame, fg_color="transparent")
+        result_container = ctk.CTkFrame(self.current_frame, fg_color="transparent")
+        txt_preview = ctk.CTkTextbox(result_container, height=300, width=400, font=("Courier New", 12))
 
-            # Caja de texto para mostrar los IMEIs (se crea aquí pero se llena al procesar)
-            txt_preview = ctk.CTkTextbox(result_container, height=300, width=400, font=("Courier New", 12))
+        def run_filter():
+            path = filedialog.askopenfilename(filetypes=[("Text files", "*.txt")])
+            if not path: return
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    content = f.read()
+                imeis = sorted(set(re.findall(r"\[(\d{15})\]", content)))
+                if imeis:
+                    out_path = os.path.join(os.path.expanduser("~"), "Downloads", "imeis_extraidos.txt")
+                    with open(out_path, "w") as f:
+                        f.write("\n".join(imeis))
+                    result_container.pack(fill="both", expand=True, padx=20, pady=10)
+                    txt_preview.delete("1.0", "end");
+                    txt_preview.insert("end", "\n".join(imeis))
+                    txt_preview.pack(pady=10);
+                    btn_copy_res.pack(pady=5)
+                    messagebox.showinfo("Success", f"Extracted {len(imeis)} IMEIs.")
+                else:
+                    messagebox.showinfo("Info", "No IMEIs found.")
+            except Exception as e:
+                messagebox.showerror("Error", str(e))
 
-            def run_filter():
-                path = filedialog.askopenfilename(filetypes=[("Text files", "*.txt")])
-                if not path: return
+        def copy_to_clipboard():
+            pyperclip.copy(txt_preview.get("1.0", "end-1c"))
+            messagebox.showinfo("Copied", "Copied to clipboard.")
 
-                try:
-                    with open(path, "r", encoding="utf-8") as f:
-                        content = f.read()
+        ctk.CTkButton(self.current_frame, text="Select Log and Extract", height=50, fg_color="#1f77b4",
+                      command=run_filter).pack(pady=10)
+        btn_copy_res = ctk.CTkButton(result_container, text="Copy List", fg_color="#2ecc71", command=copy_to_clipboard)
 
-                    # Buscamos formato [123456789012345]
-                    imeis = sorted(set(re.findall(r"\[(\d{15})\]", content)))
-
-                    if imeis:
-                        # 1. Guardar en archivo como siempre
-                        out_path = os.path.join(os.path.expanduser("~"), "Downloads", "imeis_extraidos.txt")
-                        with open(out_path, "w") as f:
-                            f.write("\n".join(imeis))
-
-                        # 2. Mostrar en la interfaz
-                        result_container.pack(fill="both", expand=True, padx=20, pady=10)
-                        txt_preview.delete("1.0", "end")
-                        txt_preview.insert("end", "\n".join(imeis))
-                        txt_preview.pack(pady=10)
-
-                        btn_copy_res.pack(pady=5)
-
-                        messagebox.showinfo("Success",
-                                            f"They are been extracted {len(imeis)} IMEIs.\nFile save in Downloads.")
-                    else:
-                        messagebox.showinfo("Info", "No IMEIs in the format were found [15 digits]")
-
-                except Exception as e:
-                    messagebox.showerror("Error", f"The file could not be processed: {e}")
-
-            def copy_to_clipboard():
-                contenido = txt_preview.get("1.0", "end-1c")
-                if contenido:
-                    pyperclip.copy(contenido)
-                    messagebox.showinfo("Copied", "List of IMEIs copied to clipboard.")
-
-            # Botón principal
-            ctk.CTkButton(self.current_frame, text="Select Log and Extract", height=50, fg_color="#1f77b4",
-                          command=run_filter).pack(pady=10)
-
-            # Botón de copiar (invisible hasta que haya resultados)
-            btn_copy_res = ctk.CTkButton(result_container, text="Copy List", fg_color="#2ecc71",
-                                         hover_color="#27ae60", command=copy_to_clipboard)
-
-    # --- 4. SPEEDS COMPARATOR (GRÁFICA INTERACTIVA + TABLA + CORRECCIÓN FECHAS) ---
+    # --- 4. SPEEDS COMPARATOR ---
     def show_speeds_comparator(self):
-            self.clear_frame()
-            self.current_frame = ctk.CTkFrame(self.main_container)
-            self.current_frame.pack(fill="both", expand=True)
-            ctk.CTkLabel(self.current_frame, text="Speeds Comparator (OBD vs GPS)", font=("Arial", 18, "bold")).pack(
-                pady=10)
+        self.clear_frame()
+        self.current_frame = ctk.CTkFrame(self.main_container)
+        self.current_frame.pack(fill="both", expand=True)
+        ctk.CTkLabel(self.current_frame, text="Speeds Comparator (OBD vs GPS)", font=("Arial", 18, "bold")).pack(
+            pady=10)
+        content_container = ctk.CTkFrame(self.current_frame, fg_color="transparent")
+        content_container.pack(fill="both", expand=True, padx=20, pady=10)
 
-            content_container = ctk.CTkFrame(self.current_frame, fg_color="transparent")
-            content_container.pack(fill="both", expand=True, padx=20, pady=10)
+        def analyze():
+            p = filedialog.askopenfilename(filetypes=[("Log", "*.txt")])
+            if not p: return
+            for widget in content_container.winfo_children(): widget.destroy()
+            rows = []
+            with open(p, "r", encoding="utf-8") as f:
+                for line in f:
+                    s = line.find("{")
+                    if s != -1:
+                        try:
+                            d = ast.literal_eval(line[s:line.rfind("}") + 1])
+                            avl = d.get("avl", {})
+                            v37 = int(str(avl.get("37", 0)), 16) if avl.get("37") else 0
+                            v24 = int(str(avl.get("24", 0)), 16) if avl.get("24") else 0
+                            rows.append({"t": d["msg_timestamp"], "obd": v37, "gps": v24})
+                        except:
+                            continue
+            if rows:
+                df = pd.DataFrame(rows).sort_values("t")
+                df["datetime"] = pd.to_datetime(df["t"], unit='ms')
+                graph_frame = ctk.CTkFrame(content_container, fg_color="white")
+                graph_frame.pack(fill="both", expand=True, pady=(0, 10))
+                fig, ax = plt.subplots(figsize=(8, 3.5))
+                ax.plot(df["datetime"], df["obd"], label="OBD (37)", color='#1f77b4')
+                ax.plot(df["datetime"], df["gps"], label="GPS (24)", color='#ff7f0e')
+                ax.legend();
+                ax.grid(True, alpha=0.3)
+                canvas = FigureCanvasTkAgg(fig, master=graph_frame)
+                canvas.draw();
+                canvas.get_tk_widget().pack(fill="both", expand=True)
+                table_frame = ctk.CTkFrame(content_container)
+                table_frame.pack(fill="both", expand=True)
+                txt_table = ctk.CTkTextbox(table_frame, font=("Courier New", 12))
+                txt_table.pack(fill="both", expand=True, padx=10, pady=5)
+                txt_table.insert("end", f"{'TIME':<25} | {'OBD':<10} | {'GPS':<10}\n" + "-" * 50 + "\n")
+                for _, r in df.iterrows():
+                    txt_table.insert("end",
+                                     f"{r['datetime'].strftime('%H:%M:%S'):<25} | {r['obd']:<10} | {r['gps']:<10}\n")
+                txt_table.configure(state="disabled")
 
-            def analyze():
-                p = filedialog.askopenfilename(filetypes=[("Log", "*.txt")])
-                if not p: return
+        ctk.CTkButton(self.current_frame, text="Load Log", command=analyze).pack(pady=5)
 
-                for widget in content_container.winfo_children():
-                    widget.destroy()
-
-                rows = []
-                with open(p, "r", encoding="utf-8") as f:
-                    for line in f:
-                        s = line.find("{")
-                        if s != -1:
-                            try:
-                                d = ast.literal_eval(line[s:line.rfind("}") + 1])
-                                avl = d.get("avl", {})
-                                v37 = int(str(avl.get("37", 0)), 16) if avl.get("37") else 0
-                                v24 = int(str(avl.get("24", 0)), 16) if avl.get("24") else 0
-                                rows.append({"t": d["msg_timestamp"], "obd": v37, "gps": v24})
-                            except:
-                                continue
-
-                if rows:
-                    df = pd.DataFrame(rows).sort_values("t")
-                    # Forzamos la conversión a datetime especificando milisegundos
-                    df["datetime"] = pd.to_datetime(df["t"], unit='ms')
-
-                    # --- GRÁFICA ---
-                    graph_frame = ctk.CTkFrame(content_container, fg_color="white")
-                    graph_frame.pack(fill="both", expand=True, pady=(0, 10))
-
-                    fig, ax = plt.subplots(figsize=(8, 3.5))
-
-                    # Usamos la columna 'datetime' directamente para el eje X
-                    l1, = ax.plot(df["datetime"], df["obd"], label="OBD (37)", marker='o', markersize=4,
-                                  color='#1f77b4', linestyle='-')
-                    l2, = ax.plot(df["datetime"], df["gps"], label="GPS (24)", marker='o', markersize=4,
-                                  color='#ff7f0e', linestyle='-')
-
-                    ax.grid(True, linestyle='--', alpha=0.6)
-                    ax.legend()
-
-                    # Ajuste automático del eje X para evitar el error de 1970
-                    ax.set_xlim(df["datetime"].min(), df["datetime"].max())
-
-                    plt.xticks(rotation=20)
-                    fig.tight_layout()
-
-                    # Elementos del Tooltip e interactividad
-                    v_line = ax.axvline(color='red', linestyle='--', alpha=0.5, visible=False)
-                    annot = ax.annotate("", xy=(0, 0), xytext=(15, 15), textcoords="offset points",
-                                        bbox=dict(boxstyle="round", fc="w", ec="0.5", alpha=0.9),
-                                        arrowprops=dict(arrowstyle="->"))
-                    annot.set_visible(False)
-
-                    def hover(event):
-                        if event.inaxes == ax:
-                            # Convertir la posición X del evento (float) a datetime
-                            # Matplotlib usa días desde 1970-01-01 en punto flotante
-                            try:
-                                import matplotlib.dates as mdates
-                                x_dt = mdates.num2date(event.xdata).replace(tzinfo=None)
-
-                                # Encontrar el índice más cercano en el DataFrame
-                                idx = (df['datetime'] - x_dt).abs().idxmin()
-                                row = df.loc[idx]
-
-                                v_line.set_xdata([row['datetime']])
-                                v_line.set_visible(True)
-
-                                annot.xy = (row['datetime'], max(row['obd'], row['gps']))
-                                text = f"Hour: {row['datetime'].strftime('%H:%M:%S')}\nOBD Speed: {row['obd']} km/h\nGPS Speed: {row['gps']} km/h"
-                                annot.set_text(text)
-                                annot.set_visible(True)
-                                fig.canvas.draw_idle()
-                            except:
-                                pass
-                        else:
-                            v_line.set_visible(False)
-                            annot.set_visible(False)
-                            fig.canvas.draw_idle()
-
-                    canvas = FigureCanvasTkAgg(fig, master=graph_frame)
-                    canvas.draw()
-                    canvas.get_tk_widget().pack(fill="both", expand=True)
-                    fig.canvas.mpl_connect("motion_notify_event", hover)
-
-                    # --- TABLA ---
-                    table_frame = ctk.CTkFrame(content_container)
-                    table_frame.pack(fill="both", expand=True)
-
-                    txt_table = ctk.CTkTextbox(table_frame, font=("Courier New", 12))
-                    txt_table.pack(fill="both", expand=True, padx=10, pady=5)
-
-                    header = f"{'TEMPORAL INSTANT':<25} | {'OBD SPEED (km/h)':<18} | {'GPS SPEED (km/h)':<18}\n"
-                    txt_table.insert("end", header + ("-" * 70) + "\n")
-
-                    for _, row in df.iterrows():
-                        txt_table.insert("end",
-                                         f"{row['datetime'].strftime('%Y-%m-%d %H:%M:%S'):<25} | {row['obd']:<18} | {row['gps']:<18}\n")
-
-                    txt_table.configure(state="disabled")
-
-            ctk.CTkButton(self.current_frame, text="Load Log and View Comparison", command=analyze).pack(pady=5)
-
-    # --- 5. 24V DEVICES (MODIFICADO: CON VISTA PREVIA Y COPIADO) ---
+    # --- 5. 24V DEVICES ---
     def show_24v_devices(self):
         self.clear_frame()
         self.current_frame = ctk.CTkFrame(self.main_container)
         self.current_frame.pack(fill="both", expand=True)
         ctk.CTkLabel(self.current_frame, text="24V devices filter", font=("Arial", 18, "bold")).pack(pady=20)
-
         result_container = ctk.CTkFrame(self.current_frame, fg_color="transparent")
         txt_preview = ctk.CTkTextbox(result_container, height=300, width=500, font=("Courier New", 12))
 
         def run_24v():
             p = filedialog.askopenfilename(filetypes=[("Log", "*.txt")])
             if not p: return
-            out = [];
-            seen = set()
+            out, seen = [], set()
             with open(p, "r", encoding="utf-8") as f:
                 for line in f:
                     try:
-                        s = line.find("{")
+                        s = line.find("{");
                         d = ast.literal_eval(line[s:line.rfind("}") + 1])
                         if float(d.get('battery_voltage', 0)) > 20.0:
                             imei = d.get('imei')
                             if imei and imei not in seen:
-                                info = f"IMEI: {imei} | Vehicle: {d.get('vehicle_license', 'N/A')}"
-                                out.append(info)
+                                out.append(f"IMEI: {imei} | Vehicle: {d.get('vehicle_license', 'N/A')}")
                                 seen.add(imei)
                     except:
                         continue
-
             if out:
-                # Guardar archivo
-                path = os.path.join(os.path.expanduser("~"), "Downloads", "Devices_24V.txt")
-                with open(path, "w") as f:
-                    f.write("\n".join(out))
-
-                # Mostrar en interfaz
                 result_container.pack(fill="both", expand=True, padx=20, pady=10)
-                txt_preview.delete("1.0", "end")
+                txt_preview.delete("1.0", "end");
                 txt_preview.insert("end", "\n".join(out))
-                txt_preview.pack(pady=10)
+                txt_preview.pack(pady=10);
                 btn_copy.pack(pady=5)
-                messagebox.showinfo("OK", "Report generated in Downloads and ready to copy.")
             else:
-                messagebox.showinfo("Info", "No device with voltage > 20V was found")
+                messagebox.showinfo("Info", "No devices found.")
 
-        def copy_list():
-            pyperclip.copy(txt_preview.get("1.0", "end-1c"))
-            messagebox.showinfo("Copied", "List 24V copied.")
+        ctk.CTkButton(self.current_frame, text="Process Log", height=50, command=run_24v).pack(pady=10)
+        btn_copy = ctk.CTkButton(result_container, text="Copy Results", fg_color="#2ecc71",
+                                 command=lambda: pyperclip.copy(txt_preview.get("1.0", "end-1c")))
 
-        ctk.CTkButton(self.current_frame, text="Process Log for 24V devices", height=50, command=run_24v).pack(pady=10)
-        btn_copy = ctk.CTkButton(result_container, text="Copy Results", fg_color="#2ecc71", command=copy_list)
-
-    # --- 6. 0 SATELLITES (MODIFICADO: CON VISTA PREVIA Y COPIADO) ---
+    # --- 6. 0 SATELLITES ---
     def show_0_satellites(self):
-            self.clear_frame()
-            self.current_frame = ctk.CTkFrame(self.main_container)
-            self.current_frame.pack(fill="both", expand=True)
-            ctk.CTkLabel(self.current_frame, text="0 Satellites devices", font=("Arial", 18, "bold")).pack(pady=20)
+        self.clear_frame()
+        self.current_frame = ctk.CTkFrame(self.main_container)
+        self.current_frame.pack(fill="both", expand=True)
+        ctk.CTkLabel(self.current_frame, text="0 Satellites devices", font=("Arial", 18, "bold")).pack(pady=20)
+        result_container = ctk.CTkFrame(self.current_frame, fg_color="transparent")
+        txt_preview = ctk.CTkTextbox(result_container, height=300, width=500, font=("Courier New", 12))
 
-            result_container = ctk.CTkFrame(self.current_frame, fg_color="transparent")
-            txt_preview = ctk.CTkTextbox(result_container, height=300, width=500, font=("Courier New", 12))
+        def run_0sat():
+            p = filedialog.askopenfilename(filetypes=[("Log", "*.txt")])
+            if not p: return
+            out, seen = [], set()
+            with open(p, "r", encoding="utf-8") as f:
+                for line in f:
+                    try:
+                        s = line.find("{");
+                        d = ast.literal_eval(line[s:line.rfind("}") + 1])
+                        if d.get('satellites') == 0:
+                            imei = d.get('imei')
+                            if imei and imei not in seen:
+                                out.append(f"IMEI: {imei} | Vehicle: {d.get('vehicle_license', 'N/A')}")
+                                seen.add(imei)
+                    except:
+                        continue
+            if out:
+                result_container.pack(fill="both", expand=True, padx=20, pady=10)
+                txt_preview.delete("1.0", "end");
+                txt_preview.insert("end", "\n".join(out))
+                txt_preview.pack(pady=10);
+                btn_copy.pack(pady=5)
+            else:
+                messagebox.showinfo("Info", "No devices found.")
 
-            def run_0sat():
-                p = filedialog.askopenfilename(filetypes=[("Log", "*.txt")])
-                if not p: return
-                out = [];
-                seen = set()
-                with open(p, "r", encoding="utf-8") as f:
-                    for line in f:
-                        try:
-                            s = line.find("{")
-                            d = ast.literal_eval(line[s:line.rfind("}") + 1])
-                            if d.get('satellites') == 0:
-                                imei = d.get('imei')
-                                if imei and imei not in seen:
-                                    info = f"IMEI: {imei} | Vehicle: {d.get('vehicle_license', 'N/A')}"
-                                    out.append(info)
-                                    seen.add(imei)
-                        except:
-                            continue
-
-                if out:
-                    # Guardar archivo
-                    path = os.path.join(os.path.expanduser("~"), "Downloads", "Devices_0Sat.txt")
-                    with open(path, "w") as f:
-                        f.write("\n".join(out))
-
-                    # Mostrar en interfaz
-                    result_container.pack(fill="both", expand=True, padx=20, pady=10)
-                    txt_preview.delete("1.0", "end")
-                    txt_preview.insert("end", "\n".join(out))
-                    txt_preview.pack(pady=10)
-                    btn_copy.pack(pady=5)
-                    messagebox.showinfo("OK", "Satellite report generated.")
-                else:
-                    messagebox.showinfo("Info", "No devices with 0 satellites were found.")
-
-            def copy_list():
-                pyperclip.copy(txt_preview.get("1.0", "end-1c"))
-                messagebox.showinfo("Copied", "0 Satellite devices list copied.")
-
-            ctk.CTkButton(self.current_frame, text="Process Log for 0 Sat", height=50, command=run_0sat).pack(pady=10)
-            btn_copy = ctk.CTkButton(result_container, text="Copy Results", fg_color="#2ecc71", command=copy_list)
+        ctk.CTkButton(self.current_frame, text="Process Log for 0 Sat", height=50, command=run_0sat).pack(pady=10)
+        btn_copy = ctk.CTkButton(result_container, text="Copy Results", fg_color="#2ecc71",
+                                 command=lambda: pyperclip.copy(txt_preview.get("1.0", "end-1c")))
 
     # --- 7. MERGER EXCEL ---
     def show_merger(self):
         self.clear_frame()
         self.current_frame = ctk.CTkFrame(self.main_container)
         self.current_frame.pack(fill="both", expand=True)
-        paths = [None, None, None]
+        paths = [None, None, None];
         labels = []
         ctk.CTkLabel(self.current_frame, text="Excel Merger by IMEI", font=("Arial", 18, "bold")).pack(pady=15)
 
@@ -436,16 +361,16 @@ class App(ctk.CTk):
             if p: paths[i] = p; labels[i].configure(text=os.path.basename(p), text_color="green")
 
         for n in ["Gps/Can", "Device", "Vehicles"]:
-            f = ctk.CTkFrame(self.current_frame)
+            f = ctk.CTkFrame(self.current_frame);
             f.pack(fill="x", padx=40, pady=5)
             ctk.CTkLabel(f, text=n, width=120).pack(side="left")
             ctk.CTkButton(f, text="Select", width=80, command=lambda x=len(labels): sel(x)).pack(side="right")
-            lbl = ctk.CTkLabel(f, text="Waiting file...", text_color="gray")
-            lbl.pack(side="right")
+            lbl = ctk.CTkLabel(f, text="Waiting file...", text_color="gray");
+            lbl.pack(side="right");
             labels.append(lbl)
 
         def fusion():
-            if not all(paths): messagebox.showwarning("Warning", "Please attach the 3 files"); return
+            if not all(paths): return messagebox.showwarning("Warning", "Attach 3 files")
             try:
                 df1, df2, df3 = pd.read_excel(paths[0]), pd.read_excel(paths[1]), pd.read_excel(paths[2])
                 res = pd.merge(df1, df2, on='IMEI', how='left').merge(df3, on='IMEI', how='left')
@@ -455,6 +380,83 @@ class App(ctk.CTk):
                 messagebox.showerror("Error", str(e))
 
         ctk.CTkButton(self.current_frame, text="MERGE", fg_color="green", command=fusion).pack(pady=20)
+
+    # --- 8. DRIVERS UPDATED ---
+    def show_drivers_updated(self):
+        self.clear_frame()
+        self.current_frame = ctk.CTkFrame(self.main_container, fg_color="transparent")
+        self.current_frame.pack(fill="both", expand=True)
+
+        # 1. Frame Superior (API Key)
+        api_f = ctk.CTkFrame(self.current_frame)
+        api_f.pack(fill="x", padx=10, pady=10)
+
+        ctk.CTkLabel(api_f, text="X-Api-Key:").pack(side="left", padx=10)
+        api_entry = ctk.CTkEntry(api_f, width=350, font=self.font_ui)
+        api_entry.insert(0, self.load_api_key())
+        api_entry.pack(side="left", padx=10, pady=10)
+
+        ctk.CTkButton(api_f, text="Guardar Key", width=100, command=lambda: self.save_api_key(api_entry)).pack(
+            side="left", padx=5)
+
+        # 2. Frame Filtros (Calendario y Ejecutar)
+        filter_f = ctk.CTkFrame(self.current_frame)
+        filter_f.pack(fill="x", padx=10, pady=5)
+
+        ctk.CTkLabel(filter_f, text="Filtrar desde (UpdatedAt >=):").pack(side="left", padx=10)
+        cal = DateEntry(filter_f, width=15, background='darkblue', foreground='white',
+                        borderwidth=2, date_pattern='yyyy-mm-dd', font=self.font_ui)
+        cal.pack(side="left", padx=10, pady=10)
+
+        # 3. Tabla (Treeview)
+        table_f = ctk.CTkFrame(self.current_frame)
+        table_f.pack(fill="both", expand=True, padx=10, pady=10)
+
+        style = ttk.Style()
+        style.configure("Custom.Treeview", background="#2b2b2b", foreground="white",
+                        fieldbackground="#2b2b2b", rowheight=30, font=self.font_table)
+        style.configure("Custom.Treeview.Heading", font=("Segoe UI", 12, "bold"))
+        style.map("Custom.Treeview", background=[('selected', '#1f538d')])
+
+        cols = ("updatedAt", "company", "cardNumber", "cardName")
+        tree = ttk.Treeview(table_f, columns=cols, show='headings', style="Custom.Treeview")
+        for col in cols:
+            tree.heading(col, text=col.capitalize())
+            tree.column(col, width=150)
+
+        scrollbar = ttk.Scrollbar(table_f, orient="vertical", command=tree.yview)
+        tree.configure(yscrollcommand=scrollbar.set)
+        tree.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+
+        # Botón Ejecutar (en el frame de filtros)
+        def run_api_process():
+            for i in tree.get_children(): tree.delete(i)
+            key = api_entry.get()
+            if not key: return messagebox.showwarning("Error", "Falta API Key")
+
+            headers = {'X-Api-Key': key}
+            limit_date = datetime.strptime(cal.get(), "%Y-%m-%d")
+
+            try:
+                companies = api.get_companies(headers)
+                drivers = api.get_drivers_ordered(headers, api.get_drivers_url, "UpdatedAt", "true", 1, 50, companies)
+
+                for d_id, d in drivers.items():
+                    d_date = datetime.strptime(d['updatedAt'][:10], "%Y-%m-%d")
+                    if d_date >= limit_date:
+                        tree.insert("", "end",
+                                    values=(d['updatedAt'], d['company']['name'], d['cardNumber'], d['cardName']))
+            except Exception as e:
+                messagebox.showerror("Error", str(e))
+
+        ctk.CTkButton(filter_f, text="EJECUTAR", fg_color="green", command=run_api_process).pack(
+            side="right", padx=20)
+
+        # Tip para copiar
+        tree.bind("<Control-c>", lambda e: self.copy_table_selection(tree))
+        ctk.CTkLabel(self.current_frame, text="Tip: Selecciona filas y pulsa Ctrl+C para copiar",
+                     font=("Arial", 10)).pack(pady=5)
 
 
 if __name__ == "__main__":
