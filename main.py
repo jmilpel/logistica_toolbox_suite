@@ -29,14 +29,14 @@ class App(ctk.CTk):
 
         # Fuentes para la nueva herramienta
         self.font_label = ctk.CTkFont(size=16, weight="bold")
-        self.font_ui = ctk.CTkFont(size=14)
-        self.font_table = ("Segoe UI", 12)
+        self.font_ui = ctk.CTkFont(size=13)
+        self.font_table = ("Segoe UI", 13)
 
         self.icon_path = "kyros.ico"
         if os.path.exists(self.icon_path):
             self.iconbitmap(self.icon_path)
             try:
-                ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("logistica.toolbox.suite.v3.2")
+                ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("logistica.toolbox.suite.v3.3")
             except:
                 pass
 
