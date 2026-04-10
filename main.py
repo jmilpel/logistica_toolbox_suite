@@ -1,5 +1,6 @@
 import customtkinter as ctk
 import pyperclip
+import requests
 import re
 import os
 import ast
@@ -9,6 +10,8 @@ from tkinter import messagebox, filedialog, ttk
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import ctypes
 from datetime import datetime
+
+from matplotlib.pyplot import autoscale
 from tkcalendar import DateEntry
 
 # Nueva importación para la herramienta de conductores
@@ -24,7 +27,7 @@ class App(ctk.CTk):
     def __init__(self):
         super().__init__()
 
-        self.title("Logistica ToolBox Suite v3.3")
+        self.title("Logistica ToolBox Suite v3.4")
         self.geometry("1150x850")
 
         # Fuentes para la nueva herramienta
@@ -36,7 +39,7 @@ class App(ctk.CTk):
         if os.path.exists(self.icon_path):
             self.iconbitmap(self.icon_path)
             try:
-                ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("logistica.toolbox.suite.v3.3")
+                ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("logistica.toolbox.suite.v3.4")
             except:
                 pass
 
@@ -54,6 +57,7 @@ class App(ctk.CTk):
         # Botones (Añadido "Drivers updated" al final)
         buttons = [
             ("IMEI / ICCID Gen", self.show_generator),
+            ("Send SMS", self.show_send_sms),  # Nueva Herramienta
             ("Ascii2Hex Converter", self.show_ascii_converter),
             ("IMEI Log Filter", self.show_imei_finder),
             ("Speeds Comparator", self.show_speeds_comparator),
@@ -140,10 +144,19 @@ class App(ctk.CTk):
                 res_iccid.delete(0, "end")
                 res_iccid.insert(0, url)
 
+        def run_iccid_2():
+            v = [l.strip() for l in txt_iccid.get("1.0", "end-1c").splitlines() if len(l.strip()) >= 18]
+            if v:
+                lista = f"{v[0]}"
+                for i in v[1:]: lista += f", {i}"
+                res_iccid.delete(0, "end")
+                res_iccid.insert(0, lista)
+
         ctk.CTkButton(t2, text="Generate URL", command=run_iccid).pack(pady=5)
+        ctk.CTkButton(t2, text="Generate list", command=run_iccid_2).pack(pady=5)
         res_iccid = ctk.CTkEntry(t2)
         res_iccid.pack(padx=20, pady=5, fill="x")
-        ctk.CTkButton(t2, text="Copy URL", command=lambda: pyperclip.copy(res_iccid.get())).pack()
+        ctk.CTkButton(t2, text="Copy", command=lambda: pyperclip.copy(res_iccid.get())).pack()
 
     # --- 2. ASCII CONVERTER ---
     def show_ascii_converter(self):
@@ -215,7 +228,7 @@ class App(ctk.CTk):
             pyperclip.copy(txt_preview.get("1.0", "end-1c"))
             # messagebox.showinfo("Copied", "Copied to clipboard.")
 
-        ctk.CTkButton(self.current_frame, text="Select Log and Extract", height=50, fg_color="#1f77b4",
+        ctk.CTkButton(self.current_frame, text="Select Log and Extract", fg_color="#1f77b4",
                       command=run_filter).pack(pady=10)
         btn_copy_res = ctk.CTkButton(result_container, text="Copy List", fg_color="#2ecc71", command=copy_to_clipboard)
 
@@ -226,13 +239,14 @@ class App(ctk.CTk):
         self.current_frame.pack(fill="both", expand=True)
         ctk.CTkLabel(self.current_frame, text="Speeds Comparator (OBD vs GPS)", font=("Arial", 18, "bold")).pack(
             pady=10)
-        content_container = ctk.CTkFrame(self.current_frame, fg_color="transparent")
-        content_container.pack(fill="both", expand=True, padx=20, pady=10)
 
         def analyze():
             p = filedialog.askopenfilename(filetypes=[("Log", "*.txt")])
             if not p: return
-            for widget in content_container.winfo_children(): widget.destroy()
+
+            for widget in content_container.winfo_children():
+                widget.destroy()
+
             rows = []
             with open(p, "r", encoding="utf-8") as f:
                 for line in f:
@@ -246,19 +260,92 @@ class App(ctk.CTk):
                             rows.append({"t": d["msg_timestamp"], "obd": v37, "gps": v24})
                         except:
                             continue
+
             if rows:
                 df = pd.DataFrame(rows).sort_values("t")
+                # Forzamos la conversión a datetime asegurando que la unidad sea milisegundos
                 df["datetime"] = pd.to_datetime(df["t"], unit='ms')
+
                 graph_frame = ctk.CTkFrame(content_container, fg_color="white")
                 graph_frame.pack(fill="both", expand=True, pady=(0, 10))
-                fig, ax = plt.subplots(figsize=(8, 3.5))
-                ax.plot(df["datetime"], df["obd"], label="OBD (37)", color='#1f77b4')
-                ax.plot(df["datetime"], df["gps"], label="GPS (24)", color='#ff7f0e')
-                ax.legend();
+
+                fig, ax = plt.subplots(figsize=(8, 3.5), dpi=100)
+                ax.plot(df["datetime"], df["obd"], label="OBD (37)", color='#1f77b4', marker='o', markersize=3)
+                ax.plot(df["datetime"], df["gps"], label="GPS (24)", color='#ff7f0e', marker='o', markersize=3)
+
+                # Ajuste automático del eje X al rango real de los datos
+                ax.set_xlim(df["datetime"].min(), df["datetime"].max())
+
+                ax.legend()
                 ax.grid(True, alpha=0.3)
+                fig.tight_layout()
+
+                # --- Elementos interactivos (Línea y Tooltip) ---
+                v_line = ax.axvline(color='gray', linestyle='--', alpha=0.7, visible=False)
+                annot = ax.annotate("", xy=(0, 0), xytext=(15, 15), textcoords="offset points",
+                                    bbox=dict(boxstyle="round", fc="w", ec="0.5", alpha=0.9),
+                                    arrowprops=dict(arrowstyle="->"))
+                annot.set_visible(False)
+
+                def hover(event):
+                    if event.inaxes == ax:
+                        # Convertimos la posición X del ratón a datetime
+                        try:
+                            target_dt = plt.matplotlib.dates.num2date(event.xdata).replace(tzinfo=None)
+                            idx = (df['datetime'] - target_dt).abs().idxmin()
+                            row = df.loc[idx]
+
+                            v_line.set_xdata([row['datetime']])
+                            v_line.set_visible(True)
+
+                            annot.xy = (row['datetime'], max(row['obd'], row['gps']))
+                            annot.set_text(
+                                f"Hora: {row['datetime'].strftime('%H:%M:%S')}\nOBD: {row['obd']} km/h\nGPS: {row['gps']} km/h")
+                            annot.set_visible(True)
+                            canvas.draw_idle()
+                        except:
+                            pass
+                    else:
+                        v_line.set_visible(False)
+                        annot.set_visible(False)
+                        canvas.draw_idle()
+
+                # --- Función de Zoom con Scroll ---
+                def zoom(event):
+                    if event.inaxes != ax: return
+                    base_scale = 1.5
+                    cur_xlim = ax.get_xlim()
+                    cur_ylim = ax.get_ylim()
+
+                    xdata = event.xdata
+                    ydata = event.ydata
+
+                    if event.button == 'up':  # Zoom in
+                        scale_factor = 1 / base_scale
+                    elif event.button == 'down':  # Zoom out
+                        scale_factor = base_scale
+                    else:
+                        scale_factor = 1
+
+                    new_width = (cur_xlim[1] - cur_xlim[0]) * scale_factor
+                    new_height = (cur_ylim[1] - cur_ylim[0]) * scale_factor
+
+                    rel_x = (cur_xlim[1] - xdata) / (cur_xlim[1] - cur_xlim[0])
+                    rel_y = (cur_ylim[1] - ydata) / (cur_ylim[1] - cur_ylim[0])
+
+                    ax.set_xlim([xdata - new_width * (1 - rel_x), xdata + new_width * (rel_x)])
+                    ax.set_ylim([ydata - new_height * (1 - rel_y), ydata + new_height * (rel_y)])
+                    canvas.draw_idle()
+
                 canvas = FigureCanvasTkAgg(fig, master=graph_frame)
-                canvas.draw();
+                # Conectar eventos
+                canvas.mpl_connect("motion_notify_event", hover)
+                canvas.mpl_connect("scroll_event", zoom)
+
+                canvas.draw()
                 canvas.get_tk_widget().pack(fill="both", expand=True)
+
+                # --- Tabla de datos ---
                 table_frame = ctk.CTkFrame(content_container)
                 table_frame.pack(fill="both", expand=True)
                 txt_table = ctk.CTkTextbox(table_frame, font=("Courier New", 12))
@@ -270,6 +357,8 @@ class App(ctk.CTk):
                 txt_table.configure(state="disabled")
 
         ctk.CTkButton(self.current_frame, text="Load Log", command=analyze).pack(pady=5)
+        content_container = ctk.CTkFrame(self.current_frame, fg_color="transparent")
+        content_container.pack(fill="both", expand=True, padx=20, pady=10)
 
     # --- 5. 24V DEVICES ---
     def show_24v_devices(self):
@@ -457,6 +546,123 @@ class App(ctk.CTk):
         tree.bind("<Control-c>", lambda e: self.copy_table_selection(tree))
         ctk.CTkLabel(self.current_frame, text="Tip: Selecciona filas y pulsa Ctrl+C para copiar",
                      font=("Arial", 14)).pack(pady=5)
+
+    # --- 9. SEND SMS ---
+    def show_send_sms(self):
+        self.clear_frame()
+        # Creamos el frame principal de la herramienta
+        self.current_frame = ctk.CTkFrame(self.main_container, fg_color="transparent")
+        self.current_frame.pack(fill="both", expand=True)
+
+        # --- CONFIGURACIÓN INTERNA ---
+        API_TOKEN = "862ae9c8ec06879708eb511b52cf225bf14df1b9"
+        BASE_URL = "https://iot.truphone.com/api/v2.0"
+
+        # --- INTERFAZ GRÁFICA ---
+        label = ctk.CTkLabel(self.current_frame, text="Envío Masivo de SMS", font=("Arial", 18, "bold"))
+        label.pack(pady=20)
+
+        # Entrada para ICCIDs
+        """desc_iccid = ctk.CTkLabel(self.current_frame, text="ICCIDs (separa varios con comas):", font=("Roboto", 12))
+        desc_iccid.pack(anchor="w", padx=50)"""
+
+        target_entry = ctk.CTkEntry(
+            self.current_frame,
+            placeholder_text="ICCIDs (separa varios con comas). Ej: 89441001, 89441002...",
+            width=1000,
+            height=30
+        )
+        target_entry.pack(pady=5)
+
+        # Caja de texto para el mensaje
+        desc_msg = ctk.CTkLabel(self.current_frame, text="Mensaje del SMS:", font=("Arial", 14, "bold"))
+        desc_msg.pack(anchor="w", padx=50, pady=(10, 0))
+
+        message_text = ctk.CTkTextbox(self.current_frame, width=800, height=60, border_width=1)
+        message_text.pack(pady=10)
+
+        # Label de estado (definido antes para que el comando pueda acceder a él)
+        status_label = ctk.CTkLabel(self.current_frame, text="Listo para enviar", font=("Arial", 14, "bold"),
+                                    text_color="gray")
+
+        # --- LÓGICA DE ENVÍO ---
+        def send_sms_action():
+            # 1. Procesar ICCIDs
+            raw_input = target_entry.get().strip()
+            iccid_list = [item.strip() for item in raw_input.split(",") if item.strip()]
+
+            # 2. Obtener mensaje
+            message = message_text.get("1.0", "end-1c").rstrip()
+
+            # Validación
+            if not iccid_list or not message:
+                messagebox.showwarning("Error", "Campos incompletos.")
+                return
+
+            # 3. Headers y Payload
+            headers = {
+                "Authorization": f"Token {API_TOKEN}",
+                "Content-Type": "application/json; charset=utf-8",
+                "Accept": "application/json"
+            }
+            payload = {
+                "iccid": iccid_list,
+                "text": message
+            }
+            url = f"{BASE_URL}/sims/send_sms/"
+
+            try:
+                status_label.configure(text="Enviando...", text_color="orange")
+                response = requests.post(url, json=payload, headers=headers, timeout=20)
+
+                if response.status_code in [200, 201, 202]:
+                    messagebox.showinfo("Éxito", f"SMS enviado.\nLongitud: {len(message)} caracteres.")
+                    message_text.delete("1.0", "end")
+                    status_label.configure(text="Enviado correctamente", text_color="green")
+                else:
+                    # Manejo de error de la API
+                    try:
+                        error_data = response.json()
+                        detail = error_data.get('detail', response.text)
+                    except:
+                        detail = response.text
+
+                    messagebox.showerror("Error API", f"Status: {response.status_code}\nDetalle: {detail}")
+                    status_label.configure(text=f"Error {response.status_code}", text_color="red")
+
+            except Exception as e:
+                messagebox.showerror("Error", str(e))
+                status_label.configure(text="Error de conexión", text_color="red")
+
+        # Botón de envío
+        send_button = ctk.CTkButton(
+            self.current_frame,
+            text="Enviar SMS",
+            command=send_sms_action,
+        )
+        send_button.pack(pady=10)
+
+
+        # Selección de botones de envío rapido
+        desc_msg = ctk.CTkLabel(self.current_frame, text="Mensajes habituales:", font=("Arial", 14, "bold"))
+        desc_msg.pack(anchor="w", padx=50, pady=(10, 0))
+
+        ctk.CTkButton(self.current_frame, text="oemreset").pack(padx=50, pady=5)
+        ctk.CTkButton(self.current_frame, text="cpureset").pack(padx=50, pady=5)
+        ctk.CTkButton(self.current_frame, text="runcmd:@com_obd_oem_dbg:6").pack(padx=50, pady=5)
+        ctk.CTkButton(self.current_frame, text="web_connect").pack(padx=50, pady=5)
+        ctk.CTkButton(self.current_frame, text="tacho_connect").pack(padx=50, pady=5)
+        ctk.CTkButton(self.current_frame, text="tachocheck").pack(padx=50, pady=5)
+
+
+        """ctk.CTkButton(self.current_frame, text="oemreset", width=100,
+                                      command=send_sms_action("  oemreset")).pack(pady=20)
+        ctk.CTkButton(self.current_frame, text="cpureset", width=100,
+                                      command=lambda: send_sms_action("  cpureset"))
+        ctk.CTkButton(self.current_frame, text="runcmd:@com_obd_oem_dbg:6", width=100,
+                                      command=lambda: send_sms_action("  runcmd:@com_obd_oem_dbg:6"))"""
+
+        status_label.pack(side="bottom", pady=10)
 
 
 if __name__ == "__main__":
