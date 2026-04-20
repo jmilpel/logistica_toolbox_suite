@@ -550,7 +550,6 @@ class App(ctk.CTk):
     # --- 9. SEND SMS ---
     def show_send_sms(self):
         self.clear_frame()
-        # Creamos el frame principal de la herramienta
         self.current_frame = ctk.CTkFrame(self.main_container, fg_color="transparent")
         self.current_frame.pack(fill="both", expand=True)
 
@@ -562,10 +561,6 @@ class App(ctk.CTk):
         label = ctk.CTkLabel(self.current_frame, text="Envío Masivo de SMS", font=("Arial", 18, "bold"))
         label.pack(pady=20)
 
-        # Entrada para ICCIDs
-        """desc_iccid = ctk.CTkLabel(self.current_frame, text="ICCIDs (separa varios con comas):", font=("Roboto", 12))
-        desc_iccid.pack(anchor="w", padx=50)"""
-
         target_entry = ctk.CTkEntry(
             self.current_frame,
             placeholder_text="ICCIDs (separa varios con comas). Ej: 89441001, 89441002...",
@@ -574,96 +569,118 @@ class App(ctk.CTk):
         )
         target_entry.pack(pady=5)
 
-        # Caja de texto para el mensaje
-        desc_msg = ctk.CTkLabel(self.current_frame, text="Mensaje del SMS:", font=("Arial", 14, "bold"))
+        desc_msg = ctk.CTkLabel(self.current_frame, text="Mensaje personalizado:", font=("Arial", 14, "bold"))
         desc_msg.pack(anchor="w", padx=50, pady=(10, 0))
 
         message_text = ctk.CTkTextbox(self.current_frame, width=800, height=60, border_width=1)
         message_text.pack(pady=10)
 
-        # Label de estado (definido antes para que el comando pueda acceder a él)
         status_label = ctk.CTkLabel(self.current_frame, text="Listo para enviar", font=("Arial", 14, "bold"),
                                     text_color="gray")
 
-        # --- LÓGICA DE ENVÍO ---
-        def send_sms_action():
-            # 1. Procesar ICCIDs
+        # --- LÓGICA DE ENVÍO REUTILIZABLE ---
+        def send_sms_action(preset_text=None):
+            # 1. Procesar ICCIDs (Siempre se necesitan)
             raw_input = target_entry.get().strip()
             iccid_list = [item.strip() for item in raw_input.split(",") if item.strip()]
 
-            # 2. Obtener mensaje
-            message = message_text.get("1.0", "end-1c").rstrip()
+            # 2. Obtener mensaje: Priorizamos el botón rápido, si no, leemos la caja
+            if preset_text:
+                message = preset_text
+            else:
+                message = message_text.get("1.0", "end-1c").rstrip()
 
             # Validación
-            if not iccid_list or not message:
-                messagebox.showwarning("Error", "Campos incompletos.")
+            if not iccid_list:
+                messagebox.showwarning("Error", "Debes introducir al menos un ICCID.")
+                return
+            if not message:
+                messagebox.showwarning("Error", "El mensaje está vacío.")
                 return
 
-            # 3. Headers y Payload
+            # 3. Request
             headers = {
                 "Authorization": f"Token {API_TOKEN}",
                 "Content-Type": "application/json; charset=utf-8",
                 "Accept": "application/json"
             }
-            payload = {
-                "iccid": iccid_list,
-                "text": message
-            }
+            payload = {"iccid": iccid_list, "text": message}
             url = f"{BASE_URL}/sims/send_sms/"
 
             try:
-                status_label.configure(text="Enviando...", text_color="orange")
+                status_label.configure(text=f"Enviando: '{message}'...", text_color="orange")
                 response = requests.post(url, json=payload, headers=headers, timeout=20)
 
                 if response.status_code in [200, 201, 202]:
-                    messagebox.showinfo("Éxito", f"SMS enviado.\nLongitud: {len(message)} caracteres.")
-                    message_text.delete("1.0", "end")
+                    messagebox.showinfo("Éxito", f"SMS enviado: {message}")
+                    # Solo borramos la caja de texto si no usamos un botón rápido
+                    if not preset_text:
+                        message_text.delete("1.0", "end")
                     status_label.configure(text="Enviado correctamente", text_color="green")
                 else:
-                    # Manejo de error de la API
-                    try:
-                        error_data = response.json()
-                        detail = error_data.get('detail', response.text)
-                    except:
-                        detail = response.text
-
-                    messagebox.showerror("Error API", f"Status: {response.status_code}\nDetalle: {detail}")
                     status_label.configure(text=f"Error {response.status_code}", text_color="red")
+                    messagebox.showerror("Error API", f"Status: {response.status_code}")
 
             except Exception as e:
                 messagebox.showerror("Error", str(e))
                 status_label.configure(text="Error de conexión", text_color="red")
 
-        # Botón de envío
+        # Botón principal (Mensaje personalizado)
         send_button = ctk.CTkButton(
             self.current_frame,
-            text="Enviar SMS",
-            command=send_sms_action,
+            text="Enviar SMS Personalizado",
+            # fg_color="#2c3e50",
+            command=send_sms_action  # Llama sin argumentos, por lo que preset_text es None
         )
         send_button.pack(pady=10)
 
+        # --- SECCIÓN DE BOTONES RÁPIDOS ---
+        desc_fast = ctk.CTkLabel(self.current_frame, text="Comandos rápidos (dispositivos Teltonika):", font=("Arial", 14, "bold"))
+        desc_fast.pack(anchor="w", padx=50, pady=(20, 5))
 
-        # Selección de botones de envío rapido
-        desc_msg = ctk.CTkLabel(self.current_frame, text="Mensajes habituales:", font=("Arial", 14, "bold"))
-        desc_msg.pack(anchor="w", padx=50, pady=(10, 0))
+        # Creamos un frame contenedor para los botones
+        fast_buttons_frame = ctk.CTkFrame(self.current_frame, fg_color="transparent")
+        fast_buttons_frame.pack(fill="x", padx=50)
 
-        ctk.CTkButton(self.current_frame, text="oemreset").pack(padx=50, pady=5)
-        ctk.CTkButton(self.current_frame, text="cpureset").pack(padx=50, pady=5)
-        ctk.CTkButton(self.current_frame, text="runcmd:@com_obd_oem_dbg:6").pack(padx=50, pady=5)
-        ctk.CTkButton(self.current_frame, text="web_connect").pack(padx=50, pady=5)
-        ctk.CTkButton(self.current_frame, text="tacho_connect").pack(padx=50, pady=5)
-        ctk.CTkButton(self.current_frame, text="tachocheck").pack(padx=50, pady=5)
+        comandos = [
+            ("CPU Reset", "  cpureset"),
+            ("OEM Reset", "  oemreset"),
+            ("DB6 Debug", "  runcmd:@com_obd_oem_dbg:6"),
+            ("Web Connect", "  web_connect"),
+            ("Tacho Connect", "  tacho_connect"),
+            ("Tacho Check", "  tachocheck"),
+            ("Activar filtros", "  log2sdfilterset 0;3;4;2;1"),
+            ("SD format", "  sdformat"),
+            ("OEM Info", "  oeminfo"),
+            ("OBD Info", "  obdinfo"),
+            ("Get Info", "  getinfo"),
+            ("Get Version", "  getver"),
+            ("Get Status", "  getstatus"),
+            ("Get GPS info", "  getgps")
+        ]
 
+        # Configuración de la cuadrícula
+        columnas_maximas = 4  # Ajusta este número según el ancho de tu app
 
-        """ctk.CTkButton(self.current_frame, text="oemreset", width=100,
-                                      command=send_sms_action("  oemreset")).pack(pady=20)
-        ctk.CTkButton(self.current_frame, text="cpureset", width=100,
-                                      command=lambda: send_sms_action("  cpureset"))
-        ctk.CTkButton(self.current_frame, text="runcmd:@com_obd_oem_dbg:6", width=100,
-                                      command=lambda: send_sms_action("  runcmd:@com_obd_oem_dbg:6"))"""
+        for indice, (nombre, comando) in enumerate(comandos):
+            # Calculamos en qué fila y columna va cada botón
+            fila = indice // columnas_maximas
+            columna = indice % columnas_maximas
 
-        status_label.pack(side="bottom", pady=10)
+            btn = ctk.CTkButton(
+                fast_buttons_frame,
+                text=nombre,
+                width=140,  # Ancho fijo para que se vean ordenados
+                command=lambda c=comando.rstrip(): send_sms_action(c)
+            )
+            # Usamos grid en lugar de pack
+            btn.grid(row=fila, column=columna, padx=5, pady=5, sticky="nsew")
 
+        # (Opcional) Hacer que las columnas se expandan equitativamente
+        for i in range(columnas_maximas):
+            fast_buttons_frame.grid_columnconfigure(i, weight=1)
+
+        status_label.pack(side="bottom", pady=20)
 
 if __name__ == "__main__":
     App().mainloop()
