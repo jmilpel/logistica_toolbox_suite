@@ -27,7 +27,7 @@ class App(ctk.CTk):
     def __init__(self):
         super().__init__()
 
-        self.title("Logistica ToolBox Suite v3.4")
+        self.title("Logistica ToolBox Suite v3.5")
         self.geometry("1150x850")
 
         # Fuentes para la nueva herramienta
@@ -39,7 +39,7 @@ class App(ctk.CTk):
         if os.path.exists(self.icon_path):
             self.iconbitmap(self.icon_path)
             try:
-                ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("logistica.toolbox.suite.v3.4")
+                ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("logistica.toolbox.suite.v3.5")
             except:
                 pass
 
@@ -647,6 +647,7 @@ class App(ctk.CTk):
             ("OEM Reset", "  oemreset"),
             ("DB6 Debug", "  runcmd:@com_obd_oem_dbg:6"),
             ("Web Connect", "  web_connect"),
+            ("OEM Data Source", "    obdoemdatasource:get:1"),
             ("Tacho Connect", "  tacho_connect"),
             ("Tacho Check", "  tachocheck"),
             ("Activar filtros", "  log2sdfilterset 0;3;4;2;1"),
