@@ -647,7 +647,7 @@ class App(ctk.CTk):
             ("OEM Reset", "  oemreset"),
             ("DB6 Debug", "  runcmd:@com_obd_oem_dbg:6"),
             ("Web Connect", "  web_connect"),
-            ("OEM Data Source", "    obdoemdatasource:get:1"),
+            ("OEM Data Source", "  obdoemdatasource:get:1"),
             ("Tacho Connect", "  tacho_connect"),
             ("Tacho Check", "  tachocheck"),
             ("Activar filtros", "  log2sdfilterset 0;3;4;2;1"),
