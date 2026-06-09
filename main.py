@@ -27,7 +27,7 @@ class App(ctk.CTk):
     def __init__(self):
         super().__init__()
 
-        self.title("Logistica ToolBox Suite v3.5")
+        self.title("Logistica ToolBox Suite v3.6")
         self.geometry("1150x850")
 
         # Fuentes para la nueva herramienta
@@ -39,7 +39,7 @@ class App(ctk.CTk):
         if os.path.exists(self.icon_path):
             self.iconbitmap(self.icon_path)
             try:
-                ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("logistica.toolbox.suite.v3.5")
+                ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("logistica.toolbox.suite.v3.6")
             except:
                 pass
 
@@ -102,10 +102,10 @@ class App(ctk.CTk):
             values = tree.item(item_id, "values")
             lines.append("\t".join(values))
         pyperclip.copy("\n".join(lines))
-        messagebox.showinfo("Copiado", "Datos copiados al portapapeles.")
+        messagebox.showinfo("Copiado", "Datos copied al portapapeles.")
 
 
-    # --- 1. GENERATOR (RESTO DE TUS FUNCIONES ORIGINALES SIGUEN AQUÍ SIN CAMBIOS) ---
+    # --- 1. GENERATOR ---
     def show_generator(self):
         self.clear_frame()
         self.current_frame = ctk.CTkTabview(self.main_container)
@@ -214,9 +214,9 @@ class App(ctk.CTk):
                     with open(out_path, "w") as f:
                         f.write("\n".join(imeis))
                     result_container.pack(fill="both", expand=True, padx=20, pady=10)
-                    txt_preview.delete("1.0", "end");
+                    txt_preview.delete("1.0", "end")
                     txt_preview.insert("end", "\n".join(imeis))
-                    txt_preview.pack(pady=10);
+                    txt_preview.pack(pady=10)
                     btn_copy_res.pack(pady=5)
                     messagebox.showinfo("Success", f"Extracted {len(imeis)} IMEIs.")
                 else:
@@ -226,7 +226,6 @@ class App(ctk.CTk):
 
         def copy_to_clipboard():
             pyperclip.copy(txt_preview.get("1.0", "end-1c"))
-            # messagebox.showinfo("Copied", "Copied to clipboard.")
 
         ctk.CTkButton(self.current_frame, text="Select Log and Extract", fg_color="#1f77b4",
                       command=run_filter).pack(pady=10)
@@ -263,7 +262,6 @@ class App(ctk.CTk):
 
             if rows:
                 df = pd.DataFrame(rows).sort_values("t")
-                # Forzamos la conversión a datetime asegurando que la unidad sea milisegundos
                 df["datetime"] = pd.to_datetime(df["t"], unit='ms')
 
                 graph_frame = ctk.CTkFrame(content_container, fg_color="white")
@@ -273,14 +271,11 @@ class App(ctk.CTk):
                 ax.plot(df["datetime"], df["obd"], label="OBD (37)", color='#1f77b4', marker='o', markersize=3)
                 ax.plot(df["datetime"], df["gps"], label="GPS (24)", color='#ff7f0e', marker='o', markersize=3)
 
-                # Ajuste automático del eje X al rango real de los datos
                 ax.set_xlim(df["datetime"].min(), df["datetime"].max())
-
                 ax.legend()
                 ax.grid(True, alpha=0.3)
                 fig.tight_layout()
 
-                # --- Elementos interactivos (Línea y Tooltip) ---
                 v_line = ax.axvline(color='gray', linestyle='--', alpha=0.7, visible=False)
                 annot = ax.annotate("", xy=(0, 0), xytext=(15, 15), textcoords="offset points",
                                     bbox=dict(boxstyle="round", fc="w", ec="0.5", alpha=0.9),
@@ -289,7 +284,6 @@ class App(ctk.CTk):
 
                 def hover(event):
                     if event.inaxes == ax:
-                        # Convertimos la posición X del ratón a datetime
                         try:
                             target_dt = plt.matplotlib.dates.num2date(event.xdata).replace(tzinfo=None)
                             idx = (df['datetime'] - target_dt).abs().idxmin()
@@ -310,7 +304,6 @@ class App(ctk.CTk):
                         annot.set_visible(False)
                         canvas.draw_idle()
 
-                # --- Función de Zoom con Scroll ---
                 def zoom(event):
                     if event.inaxes != ax: return
                     base_scale = 1.5
@@ -320,9 +313,9 @@ class App(ctk.CTk):
                     xdata = event.xdata
                     ydata = event.ydata
 
-                    if event.button == 'up':  # Zoom in
+                    if event.button == 'up':
                         scale_factor = 1 / base_scale
-                    elif event.button == 'down':  # Zoom out
+                    elif event.button == 'down':
                         scale_factor = base_scale
                     else:
                         scale_factor = 1
@@ -338,14 +331,12 @@ class App(ctk.CTk):
                     canvas.draw_idle()
 
                 canvas = FigureCanvasTkAgg(fig, master=graph_frame)
-                # Conectar eventos
                 canvas.mpl_connect("motion_notify_event", hover)
                 canvas.mpl_connect("scroll_event", zoom)
 
                 canvas.draw()
                 canvas.get_tk_widget().pack(fill="both", expand=True)
 
-                # --- Tabla de datos ---
                 table_frame = ctk.CTkFrame(content_container)
                 table_frame.pack(fill="both", expand=True)
                 txt_table = ctk.CTkTextbox(table_frame, font=("Courier New", 12))
@@ -376,7 +367,7 @@ class App(ctk.CTk):
             with open(p, "r", encoding="utf-8") as f:
                 for line in f:
                     try:
-                        s = line.find("{");
+                        s = line.find("{")
                         d = ast.literal_eval(line[s:line.rfind("}") + 1])
                         if float(d.get('battery_voltage', 0)) > 20.0:
                             imei = d.get('imei')
@@ -387,9 +378,9 @@ class App(ctk.CTk):
                         continue
             if out:
                 result_container.pack(fill="both", expand=True, padx=20, pady=10)
-                txt_preview.delete("1.0", "end");
+                txt_preview.delete("1.0", "end")
                 txt_preview.insert("end", "\n".join(out))
-                txt_preview.pack(pady=10);
+                txt_preview.pack(pady=10)
                 btn_copy.pack(pady=5)
             else:
                 messagebox.showinfo("Info", "No devices found.")
@@ -414,7 +405,7 @@ class App(ctk.CTk):
             with open(p, "r", encoding="utf-8") as f:
                 for line in f:
                     try:
-                        s = line.find("{");
+                        s = line.find("{")
                         d = ast.literal_eval(line[s:line.rfind("}") + 1])
                         if d.get('satellites') == 0:
                             imei = d.get('imei')
@@ -425,9 +416,9 @@ class App(ctk.CTk):
                         continue
             if out:
                 result_container.pack(fill="both", expand=True, padx=20, pady=10)
-                txt_preview.delete("1.0", "end");
+                txt_preview.delete("1.0", "end")
                 txt_preview.insert("end", "\n".join(out))
-                txt_preview.pack(pady=10);
+                txt_preview.pack(pady=10)
                 btn_copy.pack(pady=5)
             else:
                 messagebox.showinfo("Info", "No devices found.")
@@ -441,7 +432,7 @@ class App(ctk.CTk):
         self.clear_frame()
         self.current_frame = ctk.CTkFrame(self.main_container)
         self.current_frame.pack(fill="both", expand=True)
-        paths = [None, None, None];
+        paths = [None, None, None]
         labels = []
         ctk.CTkLabel(self.current_frame, text="Excel Merger by IMEI", font=("Arial", 18, "bold")).pack(pady=15)
 
@@ -450,12 +441,12 @@ class App(ctk.CTk):
             if p: paths[i] = p; labels[i].configure(text=os.path.basename(p), text_color="green")
 
         for n in ["Gps/Can", "Device", "Vehicles"]:
-            f = ctk.CTkFrame(self.current_frame);
+            f = ctk.CTkFrame(self.current_frame)
             f.pack(fill="x", padx=40, pady=5)
             ctk.CTkLabel(f, text=n, width=120).pack(side="left")
             ctk.CTkButton(f, text="Select", width=80, command=lambda x=len(labels): sel(x)).pack(side="right")
-            lbl = ctk.CTkLabel(f, text="Waiting file...", text_color="gray");
-            lbl.pack(side="right");
+            lbl = ctk.CTkLabel(f, text="Waiting file...", text_color="gray")
+            lbl.pack(side="right")
             labels.append(lbl)
 
         def fusion():
@@ -476,7 +467,6 @@ class App(ctk.CTk):
         self.current_frame = ctk.CTkFrame(self.main_container, fg_color="transparent")
         self.current_frame.pack(fill="both", expand=True)
 
-        # 1. Frame Superior (API Key)
         api_f = ctk.CTkFrame(self.current_frame)
         api_f.pack(fill="x", padx=10, pady=10)
 
@@ -488,7 +478,6 @@ class App(ctk.CTk):
         ctk.CTkButton(api_f, text="Guardar Key", width=100, command=lambda: self.save_api_key(api_entry)).pack(
             side="left", padx=5)
 
-        # 2. Frame Filtros (Calendario y Ejecutar)
         filter_f = ctk.CTkFrame(self.current_frame)
         filter_f.pack(fill="x", padx=10, pady=5)
 
@@ -497,7 +486,6 @@ class App(ctk.CTk):
                         borderwidth=2, date_pattern='yyyy-mm-dd', font=self.font_ui)
         cal.pack(side="left", padx=10, pady=10)
 
-        # 3. Tabla (Treeview)
         table_f = ctk.CTkFrame(self.current_frame)
         table_f.pack(fill="both", expand=True, padx=10, pady=10)
 
@@ -510,7 +498,7 @@ class App(ctk.CTk):
         cols = ("Updated At", "Company", "Card Number", "Card Name")
         tree = ttk.Treeview(table_f, columns=cols, show='headings', style="Custom.Treeview")
         for col in cols:
-            tree.heading(col, text=col.format()) #text=col.capitalize()
+            tree.heading(col, text=col.format())
             tree.column(col, width=150)
 
         scrollbar = ttk.Scrollbar(table_f, orient="vertical", command=tree.yview)
@@ -518,7 +506,6 @@ class App(ctk.CTk):
         tree.pack(side="left", fill="both", expand=True)
         scrollbar.pack(side="right", fill="y")
 
-        # Botón Ejecutar (en el frame de filtros)
         def run_api_process():
             for i in tree.get_children(): tree.delete(i)
             key = api_entry.get()
@@ -542,12 +529,11 @@ class App(ctk.CTk):
         ctk.CTkButton(filter_f, text="EJECUTAR", fg_color="green", command=run_api_process).pack(
             side="right", padx=20)
 
-        # Tip para copiar
         tree.bind("<Control-c>", lambda e: self.copy_table_selection(tree))
         ctk.CTkLabel(self.current_frame, text="Tip: Selecciona filas y pulsa Ctrl+C para copiar",
                      font=("Arial", 14)).pack(pady=5)
 
-    # --- 9. SEND SMS ---
+    # --- 9. SEND SMS (CON SUBFRAME GENERADOR INTEGRADO) ---
     def show_send_sms(self):
         self.clear_frame()
         self.current_frame = ctk.CTkFrame(self.main_container, fg_color="transparent")
@@ -559,12 +545,51 @@ class App(ctk.CTk):
 
         # --- INTERFAZ GRÁFICA ---
         label = ctk.CTkLabel(self.current_frame, text="Envío Masivo de SMS", font=("Arial", 18, "bold"))
-        label.pack(pady=20)
+        label.pack(pady=10)
 
+        # >>> NUEVA SECCIÓN: MINI GENERADOR DE LISTA DE ICCIDs <<<
+        gen_list_frame = ctk.CTkFrame(self.current_frame)
+        gen_list_frame.pack(fill="x", padx=50, pady=(5, 15))
+
+        desc_gen = ctk.CTkLabel(gen_list_frame, text="Pegar ICCIDs en bruto (uno por línea) para auto-completar:", font=("Arial", 12, "italic"))
+        desc_gen.pack(anchor="w", padx=15, pady=(5, 0))
+
+        input_and_btn_frame = ctk.CTkFrame(gen_list_frame, fg_color="transparent")
+        input_and_btn_frame.pack(fill="x", padx=10, pady=5)
+
+        raw_iccids_text = ctk.CTkTextbox(input_and_btn_frame, height=60, border_width=1)
+        raw_iccids_text.pack(side="left", fill="x", expand=True, padx=(5, 10))
+
+        def auto_generate_list():
+            v = [l.strip() for l in raw_iccids_text.get("1.0", "end-1c").splitlines() if len(l.strip()) >= 18]
+            if v:
+                lista = f"{v[0]}"
+                for i in v[1:]:
+                    lista += f", {i}"
+                target_entry.delete(0, "end")
+                target_entry.insert(0, lista)
+                status_label.configure(text=f"Lista generada con {len(v)} ICCIDs", text_color="green")
+            else:
+                messagebox.showwarning("Atención", "No se encontraron ICCIDs válidos (mínimo 18 caracteres) en el cuadro superior.")
+
+        btn_auto_gen = ctk.CTkButton(
+            input_and_btn_frame,
+            text="Generar Lista ⚡",
+            width=140,
+            fg_color="#34495e",
+            command=auto_generate_list
+        )
+        btn_auto_gen.pack(side="right", padx=5)
+        # >>> FIN DE LA NUEVA SECCIÓN <<<
+
+        desc_msg = ctk.CTkLabel(self.current_frame, text="Listado de ICCIDs:", font=("Arial", 14, "bold"))
+        desc_msg.pack(anchor="w", padx=50, pady=(10, 0))
+
+        # Campo Target Entry original
         target_entry = ctk.CTkEntry(
             self.current_frame,
             placeholder_text="ICCIDs (separa varios con comas). Ej: 89441001, 89441002...",
-            width=1000,
+            width=900,
             height=30
         )
         target_entry.pack(pady=5)
@@ -572,7 +597,7 @@ class App(ctk.CTk):
         desc_msg = ctk.CTkLabel(self.current_frame, text="Mensaje personalizado:", font=("Arial", 14, "bold"))
         desc_msg.pack(anchor="w", padx=50, pady=(10, 0))
 
-        message_text = ctk.CTkTextbox(self.current_frame, width=800, height=60, border_width=1)
+        message_text = ctk.CTkTextbox(self.current_frame, width=900, height=60, border_width=1)
         message_text.pack(pady=10)
 
         status_label = ctk.CTkLabel(self.current_frame, text="Listo para enviar", font=("Arial", 14, "bold"),
@@ -580,17 +605,14 @@ class App(ctk.CTk):
 
         # --- LÓGICA DE ENVÍO REUTILIZABLE ---
         def send_sms_action(preset_text=None):
-            # 1. Procesar ICCIDs (Siempre se necesitan)
             raw_input = target_entry.get().strip()
             iccid_list = [item.strip() for item in raw_input.split(",") if item.strip()]
 
-            # 2. Obtener mensaje: Priorizamos el botón rápido, si no, leemos la caja
             if preset_text:
                 message = preset_text
             else:
                 message = message_text.get("1.0", "end-1c").rstrip()
 
-            # Validación
             if not iccid_list:
                 messagebox.showwarning("Error", "Debes introducir al menos un ICCID.")
                 return
@@ -598,7 +620,6 @@ class App(ctk.CTk):
                 messagebox.showwarning("Error", "El mensaje está vacío.")
                 return
 
-            # 3. Request
             headers = {
                 "Authorization": f"Token {API_TOKEN}",
                 "Content-Type": "application/json; charset=utf-8",
@@ -613,7 +634,6 @@ class App(ctk.CTk):
 
                 if response.status_code in [200, 201, 202]:
                     messagebox.showinfo("Éxito", f"SMS enviado: {message}")
-                    # Solo borramos la caja de texto si no usamos un botón rápido
                     if not preset_text:
                         message_text.delete("1.0", "end")
                     status_label.configure(text="Enviado correctamente", text_color="green")
@@ -625,12 +645,10 @@ class App(ctk.CTk):
                 messagebox.showerror("Error", str(e))
                 status_label.configure(text="Error de conexión", text_color="red")
 
-        # Botón principal (Mensaje personalizado)
         send_button = ctk.CTkButton(
             self.current_frame,
             text="Enviar SMS Personalizado",
-            # fg_color="#2c3e50",
-            command=send_sms_action  # Llama sin argumentos, por lo que preset_text es None
+            command=send_sms_action
         )
         send_button.pack(pady=10)
 
@@ -638,7 +656,6 @@ class App(ctk.CTk):
         desc_fast = ctk.CTkLabel(self.current_frame, text="Comandos rápidos (dispositivos Teltonika):", font=("Arial", 14, "bold"))
         desc_fast.pack(anchor="w", padx=50, pady=(20, 5))
 
-        # Creamos un frame contenedor para los botones
         fast_buttons_frame = ctk.CTkFrame(self.current_frame, fg_color="transparent")
         fast_buttons_frame.pack(fill="x", padx=50)
 
@@ -660,28 +677,25 @@ class App(ctk.CTk):
             ("Get GPS info", "  getgps")
         ]
 
-        # Configuración de la cuadrícula
-        columnas_maximas = 4  # Ajusta este número según el ancho de tu app
+        columnas_maximas = 4
 
         for indice, (nombre, comando) in enumerate(comandos):
-            # Calculamos en qué fila y columna va cada botón
             fila = indice // columnas_maximas
             columna = indice % columnas_maximas
 
             btn = ctk.CTkButton(
                 fast_buttons_frame,
                 text=nombre,
-                width=140,  # Ancho fijo para que se vean ordenados
+                width=140,
                 command=lambda c=comando.rstrip(): send_sms_action(c)
             )
-            # Usamos grid en lugar de pack
             btn.grid(row=fila, column=columna, padx=5, pady=5, sticky="nsew")
 
-        # (Opcional) Hacer que las columnas se expandan equitativamente
         for i in range(columnas_maximas):
             fast_buttons_frame.grid_columnconfigure(i, weight=1)
 
         status_label.pack(side="bottom", pady=20)
+
 
 if __name__ == "__main__":
     App().mainloop()
