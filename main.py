@@ -104,6 +104,13 @@ class App(ctk.CTk):
         pyperclip.copy("\n".join(lines))
         messagebox.showinfo("Copiado", "Datos copied al portapapeles.")
 
+    def clear_form(self, element):
+        # Detecta automáticamente si es un Textbox o un Entry para aplicar el índice correcto
+        if isinstance(element, ctk.CTkTextbox):
+            element.delete("1.0", "end")
+        else:
+            element.delete(0, "end")
+
 
     # --- 1. GENERATOR ---
     def show_generator(self):
@@ -555,9 +562,9 @@ class App(ctk.CTk):
         desc_gen.pack(anchor="w", padx=15, pady=(5, 0))
 
         input_and_btn_frame = ctk.CTkFrame(gen_list_frame, fg_color="transparent")
-        input_and_btn_frame.pack(fill="x", padx=10, pady=5)
+        input_and_btn_frame.pack(fill="x", padx=10, pady=10)
 
-        raw_iccids_text = ctk.CTkTextbox(input_and_btn_frame, height=60, border_width=1)
+        raw_iccids_text = ctk.CTkTextbox(input_and_btn_frame, height=80, border_width=1)
         raw_iccids_text.pack(side="left", fill="x", expand=True, padx=(5, 10))
 
         def auto_generate_list():
@@ -572,6 +579,15 @@ class App(ctk.CTk):
             else:
                 messagebox.showwarning("Atención", "No se encontraron ICCIDs válidos (mínimo 18 caracteres) en el cuadro superior.")
 
+        btn_clear_form = ctk.CTkButton(
+            input_and_btn_frame,
+            text="Borrar lista 🗑️",
+            width=140,
+            fg_color="#34495e",
+            command=lambda: self.clear_form(raw_iccids_text)
+        )
+        btn_clear_form.pack(side="right", padx=10)
+
         btn_auto_gen = ctk.CTkButton(
             input_and_btn_frame,
             text="Generar Lista ⚡",
@@ -580,6 +596,7 @@ class App(ctk.CTk):
             command=auto_generate_list
         )
         btn_auto_gen.pack(side="right", padx=5)
+
         # >>> FIN DE LA NUEVA SECCIÓN <<<
 
         desc_msg = ctk.CTkLabel(self.current_frame, text="Listado de ICCIDs:", font=("Arial", 14, "bold"))
