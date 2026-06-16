@@ -1,1 +1,4 @@
-rxTw4lbgDY+wrQEXHfJ8ABrjCKmzTv3L7J3jKC9bI0g=
+{
+    "tachosync": "rxTw4lbgDY+wrQEXHfJ8ABrjCKmzTv3L7J3jKC9bI0g=",
+    "teltonika": "10604|qvT2b7jQOhID2VPJdEwQUGR0IlMJVslbc020eDGk"
+}

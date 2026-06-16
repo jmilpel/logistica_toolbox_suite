@@ -1,7 +1,7 @@
 # pyinstaller --noconsole --onefile --windowed --clean --name="URL IMEI_ICCID generator" --collect-all  customtkinter generador.py
 # pyinstaller --noconsole --onefile --name="URL IMEI_ICCID generator" --collect-all  customtkinter generador.py
 
-pyinstaller --noconsole --onefile --clean --name "Logistica ToolBox Suite" --icon="kyros.ico" --collect-all customtkinter main.py
+pyinstaller --noconsole --onefile --clean --name "Logistica ToolBox Suite_v3.6" --icon="kyros.ico" --collect-all customtkinter main.py
 
 
 --noconsole: No abrirá la ventana negra de comandos al iniciar.

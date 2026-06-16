@@ -4,18 +4,30 @@ import requests
 import re
 import os
 import ast
+import json
+import sys
+import threading
 import pandas as pd
-import matplotlib.pyplot as plt
 from tkinter import messagebox, filedialog, ttk
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import ctypes
 from datetime import datetime
-
-from matplotlib.pyplot import autoscale
 from tkcalendar import DateEntry
 
 # Nueva importación para la herramienta de conductores
 import tachosync_api as api
+
+# Forzar el backend correcto de Matplotlib y usar su API orientada a objetos para evitar errores de layout
+import matplotlib
+
+matplotlib.use('TkAgg')
+from matplotlib.figure import Figure
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+import matplotlib.dates as mdates
+
+try:
+    import config
+except ImportError:
+    config = None
 
 ctk.set_appearance_mode("System")
 ctk.set_default_color_theme("blue")
@@ -30,7 +42,7 @@ class App(ctk.CTk):
         self.title("Logistica ToolBox Suite v3.6")
         self.geometry("1150x850")
 
-        # Fuentes para la nueva herramienta
+        # Fuentes para las herramientas
         self.font_label = ctk.CTkFont(size=16, weight="bold")
         self.font_ui = ctk.CTkFont(size=13)
         self.font_table = ("Segoe UI", 13)
@@ -54,17 +66,18 @@ class App(ctk.CTk):
                                        font=ctk.CTkFont(size=22, weight="bold"))
         self.logo_label.grid(row=0, column=0, padx=20, pady=(20, 30))
 
-        # Botones (Añadido "Drivers updated" al final)
+        # Lista de botones corregida (eliminados los paréntesis de las funciones para que no se ejecuten al inicio)
         buttons = [
             ("IMEI / ICCID Gen", self.show_generator),
-            ("Send SMS", self.show_send_sms),  # Nueva Herramienta
+            ("Send SMS", self.show_send_sms),
             ("Ascii2Hex Converter", self.show_ascii_converter),
             ("IMEI Log Filter", self.show_imei_finder),
+            ("Teltonika API Data", self.show_teltonika_api),
             ("Speeds Comparator", self.show_speeds_comparator),
             ("24V devices", self.show_24v_devices),
             ("0 satellites", self.show_0_satellites),
             ("Merger Excel", self.show_merger),
-            ("Drivers updated", self.show_drivers_updated)  # Nueva Herramienta
+            ("Drivers updated", self.show_drivers_updated)
         ]
 
         for i, (name, cmd) in enumerate(buttons, start=1):
@@ -81,36 +94,73 @@ class App(ctk.CTk):
         if self.current_frame is not None:
             self.current_frame.destroy()
 
-    # --- FUNCIONES DE APOYO API CONDUCTORES ---
-    def load_api_key(self):
+    # --- FUNCIONES DE APOYO ---
+    def load_api_key(self, key="tachosync"):
         if os.path.exists(CONFIG_FILE):
-            with open(CONFIG_FILE, "r") as f:
-                return f.read().strip()
+            try:
+                with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+                    content = f.read().strip()
+                    try:
+                        data = json.loads(content)
+                        if isinstance(data, dict):
+                            return data.get(key, "")
+                    except json.JSONDecodeError:
+                        if key == "tachosync":
+                            return content
+            except Exception:
+                return ""
         return ""
 
-    def save_api_key(self, entry_widget):
-        key = entry_widget.get()
-        with open(CONFIG_FILE, "w") as f:
-            f.write(key)
-        messagebox.showinfo("Éxito", "API Key guardada en apikey.txt")
+    def save_api_key(self, entry_widget, key="tachosync"):
+        val = entry_widget.get().strip()
+        data = {}
+        if os.path.exists(CONFIG_FILE):
+            try:
+                with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+                    content = f.read().strip()
+                    try:
+                        data = json.loads(content)
+                        if not isinstance(data, dict):
+                            data = {}
+                    except json.JSONDecodeError:
+                        data = {"tachosync": content}
+            except Exception:
+                data = {}
+
+        data[key] = val
+        try:
+            with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=4, ensure_ascii=False)
+            messagebox.showinfo("Éxito", f"Clave guardada correctamente en {CONFIG_FILE}")
+        except Exception as e:
+            messagebox.showerror("Error", f"No se pudo guardar la clave: {str(e)}")
 
     def copy_table_selection(self, tree):
         selection = tree.selection()
-        if not selection: return
+        if not selection:
+            return
+
+        pointer_x = tree.winfo_pointerx() - tree.winfo_rootx()
+        column_id = tree.identify_column(pointer_x)
+
+        if not column_id:
+            return
+
+        col_index = int(column_id.replace('#', '')) - 1
         lines = []
         for item_id in selection:
             values = tree.item(item_id, "values")
-            lines.append("\t".join(values))
+            if 0 <= col_index < len(values):
+                lines.append(str(values[col_index]))
+
         pyperclip.copy("\n".join(lines))
-        messagebox.showinfo("Copiado", "Datos copied al portapapeles.")
+        messagebox.showinfo("Copiado", "Celda(s) copiada(s) al portapapeles.")
 
     def clear_form(self, element):
-        # Detecta automáticamente si es un Textbox o un Entry para aplicar el índice correcto
         if isinstance(element, ctk.CTkTextbox):
             element.delete("1.0", "end")
         else:
             element.delete(0, "end")
-
 
     # --- 1. GENERATOR ---
     def show_generator(self):
@@ -274,7 +324,9 @@ class App(ctk.CTk):
                 graph_frame = ctk.CTkFrame(content_container, fg_color="white")
                 graph_frame.pack(fill="both", expand=True, pady=(0, 10))
 
-                fig, ax = plt.subplots(figsize=(8, 3.5), dpi=100)
+                fig = Figure(figsize=(8, 3.5), dpi=100)
+                ax = fig.add_subplot(111)
+
                 ax.plot(df["datetime"], df["obd"], label="OBD (37)", color='#1f77b4', marker='o', markersize=3)
                 ax.plot(df["datetime"], df["gps"], label="GPS (24)", color='#ff7f0e', marker='o', markersize=3)
 
@@ -292,7 +344,7 @@ class App(ctk.CTk):
                 def hover(event):
                     if event.inaxes == ax:
                         try:
-                            target_dt = plt.matplotlib.dates.num2date(event.xdata).replace(tzinfo=None)
+                            target_dt = mdates.num2date(event.xdata).replace(tzinfo=None)
                             idx = (df['datetime'] - target_dt).abs().idxmin()
                             row = df.loc[idx]
 
@@ -479,10 +531,11 @@ class App(ctk.CTk):
 
         ctk.CTkLabel(api_f, text="X-Api-Key:").pack(side="left", padx=10)
         api_entry = ctk.CTkEntry(api_f, width=350, font=self.font_ui)
-        api_entry.insert(0, self.load_api_key())
+        api_entry.insert(0, self.load_api_key("tachosync"))
         api_entry.pack(side="left", padx=10, pady=10)
 
-        ctk.CTkButton(api_f, text="Guardar Key", width=100, command=lambda: self.save_api_key(api_entry)).pack(
+        ctk.CTkButton(api_f, text="Guardar Key", width=100,
+                      command=lambda: self.save_api_key(api_entry, "tachosync")).pack(
             side="left", padx=5)
 
         filter_f = ctk.CTkFrame(self.current_frame)
@@ -537,28 +590,26 @@ class App(ctk.CTk):
             side="right", padx=20)
 
         tree.bind("<Control-c>", lambda e: self.copy_table_selection(tree))
-        ctk.CTkLabel(self.current_frame, text="Tip: Selecciona filas y pulsa Ctrl+C para copiar",
+        ctk.CTkLabel(self.current_frame, text="Tip: Selecciona la columna y pulsa Ctrl+C para copiar",
                      font=("Arial", 14)).pack(pady=5)
 
-    # --- 9. SEND SMS (CON SUBFRAME GENERADOR INTEGRADO) ---
+    # --- 9. SEND SMS ---
     def show_send_sms(self):
         self.clear_frame()
         self.current_frame = ctk.CTkFrame(self.main_container, fg_color="transparent")
         self.current_frame.pack(fill="both", expand=True)
 
-        # --- CONFIGURACIÓN INTERNA ---
         API_TOKEN = "862ae9c8ec06879708eb511b52cf225bf14df1b9"
         BASE_URL = "https://iot.truphone.com/api/v2.0"
 
-        # --- INTERFAZ GRÁFICA ---
         label = ctk.CTkLabel(self.current_frame, text="Envío Masivo de SMS", font=("Arial", 18, "bold"))
         label.pack(pady=10)
 
-        # >>> NUEVA SECCIÓN: MINI GENERADOR DE LISTA DE ICCIDs <<<
         gen_list_frame = ctk.CTkFrame(self.current_frame)
         gen_list_frame.pack(fill="x", padx=50, pady=(5, 15))
 
-        desc_gen = ctk.CTkLabel(gen_list_frame, text="Pegar ICCIDs en bruto (uno por línea) para auto-completar:", font=("Arial", 12, "italic"))
+        desc_gen = ctk.CTkLabel(gen_list_frame, text="Pegar ICCIDs en bruto (uno por línea) para auto-completar:",
+                                font=("Arial", 12, "italic"))
         desc_gen.pack(anchor="w", padx=15, pady=(5, 0))
 
         input_and_btn_frame = ctk.CTkFrame(gen_list_frame, fg_color="transparent")
@@ -571,44 +622,27 @@ class App(ctk.CTk):
             v = [l.strip() for l in raw_iccids_text.get("1.0", "end-1c").splitlines() if len(l.strip()) >= 18]
             if v:
                 lista = f"{v[0]}"
-                for i in v[1:]:
-                    lista += f", {i}"
+                for i in v[1:]: lista += f", {i}"
                 target_entry.delete(0, "end")
                 target_entry.insert(0, lista)
                 status_label.configure(text=f"Lista generada con {len(v)} ICCIDs", text_color="green")
             else:
-                messagebox.showwarning("Atención", "No se encontraron ICCIDs válidos (mínimo 18 caracteres) en el cuadro superior.")
+                messagebox.showwarning("Atención", "No se encontraron ICCIDs válidos (mínimo 18 caracteres).")
 
-        btn_clear_form = ctk.CTkButton(
-            input_and_btn_frame,
-            text="Borrar lista 🗑️",
-            width=140,
-            fg_color="#34495e",
-            command=lambda: self.clear_form(raw_iccids_text)
-        )
+        btn_clear_form = ctk.CTkButton(input_and_btn_frame, text="Borrar lista 🗑️", width=140, fg_color="#34495e",
+                                       command=lambda: self.clear_form(raw_iccids_text))
         btn_clear_form.pack(side="right", padx=10)
 
-        btn_auto_gen = ctk.CTkButton(
-            input_and_btn_frame,
-            text="Generar Lista ⚡",
-            width=140,
-            fg_color="#34495e",
-            command=auto_generate_list
-        )
+        btn_auto_gen = ctk.CTkButton(input_and_btn_frame, text="Generar Lista ⚡", width=140, fg_color="#34495e",
+                                     command=auto_generate_list)
         btn_auto_gen.pack(side="right", padx=5)
-
-        # >>> FIN DE LA NUEVA SECCIÓN <<<
 
         desc_msg = ctk.CTkLabel(self.current_frame, text="Listado de ICCIDs:", font=("Arial", 14, "bold"))
         desc_msg.pack(anchor="w", padx=50, pady=(10, 0))
 
-        # Campo Target Entry original
-        target_entry = ctk.CTkEntry(
-            self.current_frame,
-            placeholder_text="ICCIDs (separa varios con comas). Ej: 89441001, 89441002...",
-            width=900,
-            height=30
-        )
+        target_entry = ctk.CTkEntry(self.current_frame,
+                                    placeholder_text="ICCIDs (separa varios con comas). Ej: 89441001, 89441002...",
+                                    width=900, height=30)
         target_entry.pack(pady=5)
 
         desc_msg = ctk.CTkLabel(self.current_frame, text="Mensaje personalizado:", font=("Arial", 14, "bold"))
@@ -620,98 +654,308 @@ class App(ctk.CTk):
         status_label = ctk.CTkLabel(self.current_frame, text="Listo para enviar", font=("Arial", 14, "bold"),
                                     text_color="gray")
 
-        # --- LÓGICA DE ENVÍO REUTILIZABLE ---
         def send_sms_action(preset_text=None):
             raw_input = target_entry.get().strip()
             iccid_list = [item.strip() for item in raw_input.split(",") if item.strip()]
+            message = preset_text if preset_text else message_text.get("1.0", "end-1c").rstrip()
 
-            if preset_text:
-                message = preset_text
-            else:
-                message = message_text.get("1.0", "end-1c").rstrip()
-
-            if not iccid_list:
-                messagebox.showwarning("Error", "Debes introducir al menos un ICCID.")
-                return
-            if not message:
-                messagebox.showwarning("Error", "El mensaje está vacío.")
+            if not iccid_list or not message:
+                messagebox.showwarning("Error", "Faltan ICCIDs o el mensaje está vacío.")
                 return
 
-            headers = {
-                "Authorization": f"Token {API_TOKEN}",
-                "Content-Type": "application/json; charset=utf-8",
-                "Accept": "application/json"
-            }
+            headers = {"Authorization": f"Token {API_TOKEN}", "Content-Type": "application/json; charset=utf-8",
+                       "Accept": "application/json"}
             payload = {"iccid": iccid_list, "text": message}
             url = f"{BASE_URL}/sims/send_sms/"
 
             try:
                 status_label.configure(text=f"Enviando: '{message}'...", text_color="orange")
                 response = requests.post(url, json=payload, headers=headers, timeout=20)
-
                 if response.status_code in [200, 201, 202]:
-                    messagebox.showinfo("Éxito", f"SMS enviado: {message}")
-                    if not preset_text:
-                        message_text.delete("1.0", "end")
+                    messagebox.showinfo("Éxito", f"SMS enviado con éxito.")
+                    if not preset_text: message_text.delete("1.0", "end")
                     status_label.configure(text="Enviado correctamente", text_color="green")
                 else:
                     status_label.configure(text=f"Error {response.status_code}", text_color="red")
-                    messagebox.showerror("Error API", f"Status: {response.status_code}")
-
             except Exception as e:
                 messagebox.showerror("Error", str(e))
-                status_label.configure(text="Error de conexión", text_color="red")
 
-        send_button = ctk.CTkButton(
-            self.current_frame,
-            text="Enviar SMS Personalizado",
-            command=send_sms_action
-        )
+        send_button = ctk.CTkButton(self.current_frame, text="Enviar SMS Personalizado", command=send_sms_action)
         send_button.pack(pady=10)
 
-        # --- SECCIÓN DE BOTONES RÁPIDOS ---
-        desc_fast = ctk.CTkLabel(self.current_frame, text="Comandos rápidos (dispositivos Teltonika):", font=("Arial", 14, "bold"))
+        # Comandos rápidos
+        desc_fast = ctk.CTkLabel(self.current_frame, text="Comandos rápidos (dispositivos Teltonika):",
+                                 font=("Arial", 14, "bold"))
         desc_fast.pack(anchor="w", padx=50, pady=(20, 5))
 
         fast_buttons_frame = ctk.CTkFrame(self.current_frame, fg_color="transparent")
         fast_buttons_frame.pack(fill="x", padx=50)
 
         comandos = [
-            ("CPU Reset", "  cpureset"),
-            ("OEM Reset", "  oemreset"),
-            ("DB6 Debug", "  runcmd:@com_obd_oem_dbg:6"),
-            ("Web Connect", "  web_connect"),
-            ("OEM Data Source", "  obdoemdatasource:get:1"),
+            ("CPU Reset", "  cpureset"), ("OEM Reset", "  oemreset"), ("DB6 Debug", "  runcmd:@com_obd_oem_dbg:6"),
+            ("Web Connect", "  web_connect"), ("OEM Data Source", "  obdoemdatasource:get:1"),
             ("Tacho Connect", "  tacho_connect"),
-            ("Tacho Check", "  tachocheck"),
-            ("Activar filtros", "  log2sdfilterset 0;3;4;2;1"),
+            ("Tacho Check", "  tachocheck"), ("Activar filtros", "  log2sdfilterset 0;3;4;2;1"),
             ("SD format", "  sdformat"),
-            ("OEM Info", "  oeminfo"),
-            ("OBD Info", "  obdinfo"),
-            ("Get Info", "  getinfo"),
-            ("Get Version", "  getver"),
-            ("Get Status", "  getstatus"),
-            ("Get GPS info", "  getgps")
+            ("OEM Info", "  oeminfo"), ("OBD Info", "  obdinfo"), ("Get Info", "  getinfo"),
+            ("Get Version", "  getver"), ("Get Status", "  getstatus"), ("Get GPS info", "  getgps")
         ]
 
         columnas_maximas = 4
-
         for indice, (nombre, comando) in enumerate(comandos):
             fila = indice // columnas_maximas
             columna = indice % columnas_maximas
-
-            btn = ctk.CTkButton(
-                fast_buttons_frame,
-                text=nombre,
-                width=140,
-                command=lambda c=comando.rstrip(): send_sms_action(c)
-            )
+            btn = ctk.CTkButton(fast_buttons_frame, text=nombre, width=140,
+                                command=lambda c=comando.rstrip(): send_sms_action(c))
             btn.grid(row=fila, column=columna, padx=5, pady=5, sticky="nsew")
 
-        for i in range(columnas_maximas):
-            fast_buttons_frame.grid_columnconfigure(i, weight=1)
-
+        for i in range(columnas_maximas): fast_buttons_frame.grid_columnconfigure(i, weight=1)
         status_label.pack(side="bottom", pady=20)
+
+    # --- 10. TELTONIKA API DATA ---
+    def show_teltonika_api(self):
+        self.clear_frame()
+        self.current_frame = ctk.CTkFrame(self.main_container, fg_color="transparent")
+        self.current_frame.pack(fill="both", expand=True)
+
+        def get_app_path():
+            if getattr(sys, 'frozen', False): return os.path.dirname(sys.executable)
+            return os.path.dirname(os.path.abspath(__file__))
+
+        config_file = os.path.join(get_app_path(), "config.json")
+        config_data = {}
+        if os.path.exists(config_file):
+            try:
+                with open(config_file, 'r') as f:
+                    config_data = json.load(f)
+            except:
+                pass
+
+        api_url = config.api_url if (config and hasattr(config, 'api_url')) else config_data.get("api_url",
+                                                                                                 "https://fota.teltonika-gps.com/api/v1/devices/")
+        token_inicial = config_data.get("fota_token",
+                                        config.fota_token if (config and hasattr(config, 'fota_token')) else "")
+
+        # --- SECCIÓN SUPERIOR: CONFIG TOKEN ---
+        config_f = ctk.CTkFrame(self.current_frame)
+        config_f.pack(fill="x", padx=10, pady=5)
+        ctk.CTkLabel(config_f, text="FOTA Token:").pack(side="left", padx=10, pady=5)
+        token_entry = ctk.CTkEntry(config_f, width=420, font=self.font_ui)
+        token_entry.insert(0, token_inicial)
+        token_entry.pack(side="left", padx=10, pady=5)
+
+        def save_fota_token():
+            config_data["fota_token"] = token_entry.get().strip()
+            try:
+                with open(config_file, 'w') as f:
+                    json.dump(config_data, f, indent=4)
+                messagebox.showinfo("Éxito", "Token FOTA guardado.")
+            except Exception as e:
+                messagebox.showerror("Error", str(e))
+
+        ctk.CTkButton(config_f, text="Guardar Token", width=110, command=save_fota_token).pack(side="left", padx=5,
+                                                                                               pady=5)
+
+        # --- SECCIÓN MEDIO: MÉTODO DE ENTRADA ---
+        input_mode_f = ctk.CTkFrame(self.current_frame)
+        input_mode_f.pack(fill="x", padx=10, pady=5)
+        ctk.CTkLabel(input_mode_f, text="Origen de IMEIs:", font=self.font_label).pack(side="left", padx=10, pady=5)
+
+        # Contenedor dinámico fijo para mantener la posición vertical estable de los campos de entrada
+        container_dinamico_f = ctk.CTkFrame(self.current_frame, fg_color="transparent")
+        container_dinamico_f.pack(fill="x", padx=10, pady=5)
+
+        file_input_f = ctk.CTkFrame(container_dinamico_f)
+        manual_input_f = ctk.CTkFrame(container_dinamico_f)
+
+        file_path_var = ctk.StringVar()
+        ctk.CTkEntry(file_input_f, textvariable=file_path_var, width=500, font=self.font_ui).pack(side="left", padx=10,
+                                                                                                  pady=5)
+
+        def browse_input_file():
+            ftypes = [("Todos", "*.*"), ("Texto", "*.txt"), ("CSV", "*.csv"), ("Excel", "*.xlsx")]
+            p = filedialog.askopenfilename(filetypes=ftypes)
+            if p: file_path_var.set(p)
+
+        ctk.CTkButton(file_input_f, text="Examinar...", command=browse_input_file).pack(side="left", padx=5, pady=5)
+
+        manual_textbox = ctk.CTkTextbox(manual_input_f, height=100, border_width=1)
+        manual_textbox.pack(fill="x", padx=10, pady=5)
+
+        def toggle_input_method(value):
+            if value == "Archivo":
+                manual_input_f.pack_forget()
+                file_input_f.pack(fill="x", padx=10, pady=5)
+            else:
+                file_input_f.pack_forget()
+                manual_input_f.pack(fill="x", padx=10, pady=5)
+
+        mode_selector = ctk.CTkSegmentedButton(input_mode_f, values=["Archivo", "Manual (Texto)"],
+                                               command=toggle_input_method)
+        mode_selector.pack(side="left", padx=20, pady=5)
+        mode_selector.set("Archivo")
+        file_input_f.pack(fill="x", padx=10, pady=5)
+
+        # --- SECCIÓN: FILTROS DE EXPORTACIÓN ---
+        fields_f = ctk.CTkFrame(self.current_frame)
+        fields_f.pack(fill="x", padx=10, pady=5)
+        ctk.CTkLabel(fields_f, text="Campos a guardar en archivo:").pack(anchor="w", padx=10, pady=2)
+        field_vars = {
+            "iccid": ctk.BooleanVar(value=True), "current_firmware": ctk.BooleanVar(value=True),
+            "vin": ctk.BooleanVar(value=True), "group": ctk.BooleanVar(value=False),
+            "seen_at": ctk.BooleanVar(value=False), "description": ctk.BooleanVar(value=False)
+        }
+        chk_frame = ctk.CTkFrame(fields_f, fg_color="transparent")
+        chk_frame.pack(fill="x", padx=10, pady=2)
+        for idx, (field, var) in enumerate(field_vars.items()):
+            ctk.CTkCheckBox(chk_frame, text=field, variable=var).grid(row=0, column=idx, padx=10, pady=5)
+
+        # --- SECCIÓN: ACCIONES Y FORMATOS ---
+        actions_f = ctk.CTkFrame(self.current_frame)
+        actions_f.pack(fill="x", padx=10, pady=5)
+        format_var = ctk.StringVar(value="txt")
+        ctk.CTkRadioButton(actions_f, text="Texto (.txt)", variable=format_var, value="txt").pack(side="left", padx=10,
+                                                                                                  pady=5)
+        ctk.CTkRadioButton(actions_f, text="Excel (.xlsx)", variable=format_var, value="xlsx").pack(side="left",
+                                                                                                    padx=10, pady=5)
+
+        progress_bar = ctk.CTkProgressBar(self.current_frame)
+        progress_bar.set(0)
+        status_lbl = ctk.CTkLabel(self.current_frame, text="Estado: Listo", font=self.font_ui)
+
+        # --- TABLA DE RESULTADOS EN PANTALLA ---
+        table_f = ctk.CTkFrame(self.current_frame)
+        table_f.pack(fill="both", expand=True, padx=10, pady=5)
+        cols = ("IMEI", "ICCID", "Firmware", "Group", "Seen At", "VIN", "Description")
+        tree = ttk.Treeview(table_f, columns=cols, show='headings', style="Custom.Treeview")
+        for col in cols:
+            tree.heading(col, text=col)
+            tree.column(col, width=120, anchor="center")
+        scrollbar = ttk.Scrollbar(table_f, orient="vertical", command=tree.yview)
+        tree.configure(yscrollcommand=scrollbar.set)
+        tree.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+        tree.bind("<Control-c>", lambda e: self.copy_table_selection(tree))
+
+        log_lines = []
+
+        def log_msg(msg):
+            log_lines.append(f"{datetime.now().strftime('%H:%M:%S')} - {msg}")
+
+        def run_api_process():
+            for item in tree.get_children(): tree.delete(item)
+            log_lines.clear()
+            tok = token_entry.get().strip()
+            if not tok: return messagebox.showwarning("Error", "Falta Token FOTA")
+
+            imeis = []
+            if mode_selector.get() == "Archivo":
+                fp = file_path_var.get()
+                if not fp or not os.path.exists(fp): return messagebox.showwarning("Error", "Archivo inválido.")
+                _, ext = os.path.splitext(fp.lower())
+                try:
+                    if ext == '.xlsx':
+                        df = pd.read_excel(fp, header=None)
+                        imeis = df.iloc[:, 0].astype(str).tolist()
+                    elif ext == '.csv':
+                        df = pd.read_csv(fp, header=None)
+                        imeis = df.iloc[:, 0].astype(str).tolist()
+                    else:
+                        with open(fp, 'r') as f:
+                            imeis = [line.strip() for line in f if line.strip()]
+                except Exception as e:
+                    return messagebox.showerror("Error", str(e))
+            else:
+                raw_lines = manual_textbox.get("1.0", "end-1c").splitlines()
+                for l in raw_lines:
+                    cl = l.strip()
+                    if len(cl) == 15 and cl.isdigit():
+                        imeis.append(cl)
+                    elif cl:
+                        log_msg(f"Ignorado (no cumple 15 dígitos): {cl}")
+
+            imeis = [i.strip() for i in imeis if i.strip().isdigit() and len(i.strip()) == 15]
+            if not imeis: return messagebox.showwarning("Error", "No hay IMEIs válidos de 15 dígitos.")
+
+            def async_task():
+                btn_run.configure(state="disabled")
+                progress_bar.set(0)
+                results = []
+                headers = {'accept': 'application/json', 'Authorization': f'Bearer {tok}'}
+                total = len(imeis)
+
+                for idx, imei in enumerate(imeis):
+                    status_lbl.configure(text=f"Procesando {idx + 1}/{total} - IMEI: {imei}")
+                    progress_bar.set(idx / total)
+                    self.update_idletasks()
+
+                    url = f"{api_url}{imei}"
+                    try:
+                        res = requests.get(url, headers=headers, timeout=15)
+                        if res.status_code == 200:
+                            data = res.json()
+                            iccid_val = data.get("iccid", "")[:19] if data.get("iccid") else ""
+                            fw_val = data.get("current_firmware", "")
+                            g_val = data["group"].get("name", "") if (
+                                    "group" in data and isinstance(data["group"], dict)) else str(
+                                data.get("group", ""))
+                            seen_val = data.get("seen_at", "")
+                            vin_val = data["obd"].get("vin", "") if (
+                                    "obd" in data and isinstance(data["obd"], dict)) else ""
+                            desc_val = data.get("description", "")
+
+                            tree.insert("", "end", values=(imei, iccid_val, fw_val, g_val, seen_val, vin_val, desc_val))
+
+                            r_entry = {"imei": imei}
+                            selected_fields = [f for f, v in field_vars.items() if v.get()]
+                            mapping = {"iccid": iccid_val, "current_firmware": fw_val, "group": g_val,
+                                       "seen_at": seen_val, "vin": vin_val, "description": desc_val}
+                            for field in selected_fields: r_entry[field] = mapping[field]
+                            results.append(r_entry)
+                            log_msg(f"IMEI {imei} consultado con éxito.")
+                        else:
+                            log_msg(f"Error {res.status_code} para IMEI {imei}")
+                            tree.insert("", "end",
+                                        values=(imei, "ERROR API", f"Status {res.status_code}", "", "", "", ""))
+                    except Exception as ex:
+                        log_msg(f"Excepción en IMEI {imei}: {ex}")
+                        tree.insert("", "end", values=(imei, "ERROR CONEXIÓN", str(ex), "", "", "", ""))
+
+                progress_bar.set(1.0)
+                status_lbl.configure(text=f"Procesado completo. Total: {total}")
+
+                if results:
+                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    out_dir = os.path.join(os.path.expanduser("~"), "Downloads", "TeltonikaAPI_Resultados")
+                    os.makedirs(out_dir, exist_ok=True)
+                    fmt = format_var.get()
+                    if fmt == "xlsx":
+                        out_p = os.path.join(out_dir, f"teltonika_data_{timestamp}.xlsx")
+                        pd.DataFrame(results).to_excel(out_p, index=False)
+                    else:
+                        out_p = os.path.join(out_dir, f"teltonika_data_{timestamp}.txt")
+                        pd.DataFrame(results).to_csv(out_p, sep="\t", index=False)
+                    messagebox.showinfo("Completado", f"Datos exportados a:\n{out_p}")
+                btn_run.configure(state="normal")
+
+            threading.Thread(target=async_task, daemon=True).start()
+
+        btn_run = ctk.CTkButton(actions_f, text="EJECUTAR", fg_color="green", command=run_api_process)
+        btn_run.pack(side="right", padx=10, pady=5)
+
+        def save_log_file():
+            if not log_lines: return messagebox.showinfo("Info", "El log está vacío.")
+            p = filedialog.asksaveasfilename(defaultextension=".txt", filetypes=[("Texto", "*.txt")])
+            if p:
+                with open(p, "w", encoding="utf-8") as f: f.write("\n".join(log_lines))
+                messagebox.showinfo("Éxito", "Log管ado.")
+
+        ctk.CTkButton(actions_f, text="Guardar Log", command=save_log_file).pack(side="right", padx=5, pady=5)
+
+        status_lbl.pack(anchor="w", padx=15, pady=2)
+        progress_bar.pack(fill="x", padx=15, pady=5)
+        ctk.CTkLabel(self.current_frame, text="Tip: Selecciona una celda y pulsa Ctrl+C para copiar la columna entera",
+                     font=("Arial", 12, "italic")).pack(pady=2)
 
 
 if __name__ == "__main__":
